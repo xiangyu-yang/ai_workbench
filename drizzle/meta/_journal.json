@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794356565854,
+      "tag": "0000_hard_arclight",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794388078590,
+      "tag": "0001_skill_files_apps",
+      "breakpoints": true
+    }
+  ]
+}

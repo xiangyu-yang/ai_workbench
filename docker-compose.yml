@@ -1,0 +1,29 @@
+# 单机 / 私有化：内置 PGlite，一条命令启动完整工作台。
+# 生产集群请使用 deploy/docker-compose.prod.yml（PostgreSQL + Web + Worker）。
+services:
+  cuter:
+    build:
+      context: .
+      target: web
+    image: cuter-workbench:web
+    container_name: cuter-web
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      NODE_ENV: production
+      APP_URL: ${APP_URL:-http://localhost:3100}
+      # 生产必须替换为 >= 32 位随机字符串
+      APP_SECRET: ${APP_SECRET:?APP_SECRET is required (openssl rand -hex 32)}
+      DATA_DIR: /data
+      DEMO_MODE: ${DEMO_MODE:-true}
+      MCP_ALLOW_STDIO: ${MCP_ALLOW_STDIO:-true}
+      SKILL_ALLOW_SCRIPTS: ${SKILL_ALLOW_SCRIPTS:-true}
+      INPROCESS_WORKER: "true"
+      MIGRATE_ON_BOOT: "true"
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+    volumes:
+      - cuter_data:/data
+
+volumes:
+  cuter_data:
