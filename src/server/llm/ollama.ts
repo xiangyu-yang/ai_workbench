@@ -131,12 +131,13 @@ export async function ollamaStream(params: StreamChatParams): Promise<LlmResult>
   signal?.addEventListener('abort', onAbort, { once: true });
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let timedOut = false;
+  const idleTimeoutMs = Math.max(30_000, Number(process.env.OLLAMA_IDLE_TIMEOUT_MS || 180_000));
   const resetIdle = () => {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, 300_000);
+    }, idleTimeoutMs);
   };
   resetIdle();
 
@@ -152,7 +153,7 @@ export async function ollamaStream(params: StreamChatParams): Promise<LlmResult>
     signal?.removeEventListener('abort', onAbort);
     if (idleTimer) clearTimeout(idleTimer);
     if (signal?.aborted) throw new Error('已取消');
-    if (timedOut) throw new Error('本地模型响应超时，请检查 Ollama 是否在运行或显存是否充足');
+    if (timedOut) throw new Error(`本地模型超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有输出，请检查 Ollama/显存，或降低上下文`);
     throw new Error(`无法连接本地 Ollama：${(err as Error).message}`);
   }
 
@@ -253,7 +254,7 @@ export async function ollamaStream(params: StreamChatParams): Promise<LlmResult>
     }
   } catch (err) {
     if (signal?.aborted) throw new Error('已取消');
-    if (timedOut) throw new Error('本地模型响应超时，请检查 Ollama 是否在运行或显存是否充足');
+    if (timedOut) throw new Error(`本地模型超过 ${Math.round(idleTimeoutMs / 1000)} 秒没有输出，请检查 Ollama/显存，或降低上下文`);
     throw err;
   } finally {
     signal?.removeEventListener('abort', onAbort);

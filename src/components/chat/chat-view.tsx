@@ -189,9 +189,12 @@ export function ChatView({
 
   // 离开页面再回来：SSE 连接可能已经断开，但服务端生成仍在继续。
   // 通过消息快照轮询追平文本、工具、技能与交付物，直到流式结束。
+  const hasLiveMessage = messages.some(
+    (message) => message.status === 'streaming' || message.status === 'awaiting_approval',
+  );
   React.useEffect(() => {
     const id = threadIdRef.current;
-    if (!id || !streaming || abortRef.current) return;
+    if (!id || !hasLiveMessage || abortRef.current) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -241,7 +244,7 @@ export function ChatView({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [streaming]);
+  }, [hasLiveMessage]);
 
   const onScroll = () => {
     const el = scrollRef.current;

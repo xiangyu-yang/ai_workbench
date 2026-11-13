@@ -412,7 +412,7 @@ export async function tickScheduler(): Promise<void> {
 
 async function recoverStale(): Promise<void> {
   const db = await getDb();
-  const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+  const cutoff = new Date(Date.now() - 10 * 60 * 1000);
   const stale = await db
     .update(tasks)
     .set({ status: 'queued', lockedBy: null, lockedAt: null, updatedAt: new Date() })
@@ -422,10 +422,15 @@ async function recoverStale(): Promise<void> {
         lt(tasks.lockedAt, cutoff),
       ),
     )
-    .returning({ id: tasks.id });
+    .returning({ id: tasks.id, orgId: tasks.orgId });
   if (stale.length) {
     console.warn(`[cuter] 恢复 ${stale.length} 个中断任务`);
-    for (const row of stale) enqueueTask(row.id);
+    for (const row of stale) {
+      await appendTaskEvent(row.orgId, row.id, 'task.recovered', {
+        reason: '执行器超过 10 分钟无心跳或服务重启',
+      });
+      enqueueTask(row.id);
+    }
   }
 }
 
@@ -452,6 +457,9 @@ export function ensureScheduler(force = false): void {
   }, 30_000);
   setInterval(() => {
     void enqueueQueuedTasks().catch(() => undefined);
+  }, 60_000);
+  setInterval(() => {
+    void recoverStale().catch((err) => console.error('[cuter] 恢复任务失败', err));
   }, 60_000);
   console.log('[cuter] 任务调度器已启动（进程内执行器）');
 }
