@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
 import {
   approvals,
@@ -199,6 +199,21 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     taskId: params.taskId || undefined,
   });
 
+  const recentUserRows = await db
+    .select({ parts: messages.parts })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.orgId, params.orgId),
+        eq(messages.threadId, params.threadId),
+        eq(messages.role, 'user'),
+      ),
+    )
+    .orderBy(desc(messages.createdAt))
+    .limit(1);
+  const skillQuery = recentUserRows[0]
+    ? textOfParts(recentUserRows[0].parts || [])
+    : thread.title;
   const toolset = await buildToolset({
     orgId: params.orgId,
     expert,
@@ -206,6 +221,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     kbIds,
     taskId: params.taskId,
     depth: params.depth || 0,
+    query: skillQuery,
   });
   const toolMap = new Map(toolset.tools.map((t) => [t.name, t]));
 
@@ -644,7 +660,20 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           part.title = tool?.title || part.title || toolTitle(call.name);
         }
 
+        const signatureOf = (value: unknown) => JSON.stringify(value || {});
+        const findCached = (call: LlmToolCall) =>
+          parts.find(
+            (p): p is ToolPart =>
+              p.type === 'tool' &&
+              p.status === 'ok' &&
+              p.name === call.name &&
+              Boolean(p.output) &&
+              p.id !== call.id &&
+              signatureOf(p.args) === signatureOf(call.args),
+          );
+
         const requiresApproval = result.toolCalls.filter((call) => {
+          if (findCached(call)) return false;
           const tool = toolMap.get(call.name);
           return tool && needsApproval(tool, policy);
         });
@@ -714,6 +743,30 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           };
           if (!parts.includes(part)) parts.push(part);
           part.args = call.args;
+          const cached = findCached(call);
+          if (cached) {
+            part.status = 'ok';
+            part.output = cached.output;
+            part.summary = cached.summary || '复用本轮已执行结果';
+            part.durationMs = 0;
+            llmMessages.push({
+              role: 'tool',
+              toolCallId: call.id,
+              name: call.name,
+              content: cached.output || '',
+              isError: false,
+            });
+            send({
+              type: 'tool_result',
+              id: call.id,
+              name: call.name,
+              status: 'ok',
+              summary: part.summary,
+              output: truncate(cached.output || '', 4000),
+              durationMs: 0,
+            });
+            continue;
+          }
           part.status = 'running';
           const started = Date.now();
           send({ type: 'tool_result', id: call.id, name: call.name, status: 'ok', summary: '执行中…' });
@@ -894,6 +947,7 @@ async function delegateToExpert(
     mode: 'ask',
     kbIds,
     depth: (params.depth || 0) + 1,
+    query: goal,
   });
   const system = buildSystemPrompt({
     orgName: '组织',

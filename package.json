@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "setup": "npm run db:migrate && npm run db:seed",
-    "db:backfill": "tsx scripts/backfill-packages.ts"
+    "db:backfill": "tsx scripts/backfill-packages.ts",
+    "db:seed-skills": "tsx scripts/seed-skills.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.0",

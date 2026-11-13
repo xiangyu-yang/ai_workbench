@@ -1,23 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
-import { apps, expertSkills, experts, skillFiles, skillVersions, skills } from '@/server/db/schema';
+import { apps, experts } from '@/server/db/schema';
 import { newId } from '@/server/ids';
-import { composeSkillMarkdown, loadSkillFiles, mimeOf, toPackageFile } from '@/server/skills/package';
-
-const RESEARCH_SKILL = `## 深度调研方法
-1. **界定问题**：明确决策问题、对象、时间范围与成功标准。
-2. **搭建框架**：用 MECE 拆解 3-5 个分析维度，避免遗漏与重复。
-3. **多源取证**：优先一手资料（文档、数据、访谈），其次权威二手资料，标注来源与日期。
-4. **交叉验证**：关键结论至少两个独立来源；矛盾时呈现分歧并说明置信度。
-5. **输出结构**：结论先行 → 关键证据 → 风险与反方观点 → 行动建议。
-6. **引用规范**：每个事实性论断后用 [n] 标注来源，不使用无法核实的数字。`;
-
-const WRITING_SKILL = `## 结构化写作规范
-- 先写"一页纸摘要"：背景一句话、结论三条、下一步三条。
-- 正文采用金字塔结构：结论 → 论据 → 事实。
-- 每段只表达一个观点，首句即主旨。
-- 表格用于对比，列表用于并列，避免连续大段文字。
-- 交付前自检：术语一致、数字口径一致、时间与责任人明确。`;
+import { bindSeedSkills, installSkillLibrary } from '@/server/skills/install';
 
 const ANALYST_PROMPT = `你是组织内的数据分析师，擅长把模糊问题转为可验证的分析框架。
 工作方式：
@@ -52,106 +37,7 @@ export async function provisionOrg(params: {
     .limit(1);
   if (existing.length) return;
 
-  const skillResearchId = newId('skl');
-  const skillWritingId = newId('skl');
-  const researchMd = composeSkillMarkdown({
-    name: '深度调研方法论',
-    description: '多源取证、交叉验证、结论先行的研究方法',
-    body: RESEARCH_SKILL,
-    version: '1.0.0',
-    category: '研究',
-    allowedTools: ['knowledge_search', 'web_search', 'read_url'],
-  });
-  const writingMd = composeSkillMarkdown({
-    name: '结构化写作规范',
-    description: '金字塔结构、一页纸摘要、交付前自检',
-    body: WRITING_SKILL,
-    version: '1.0.0',
-    category: '写作',
-    allowedTools: ['workspace_write', 'workspace_read'],
-  });
-  await db.insert(skills).values([
-    {
-      id: skillResearchId,
-      orgId: params.orgId,
-      name: '深度调研方法论',
-      description: '多源取证、交叉验证、结论先行的研究方法',
-      type: 'instruction',
-      icon: 'telescope',
-      category: '研究',
-      instructions: RESEARCH_SKILL,
-      manifest: {
-        tools: [],
-        entry: 'SKILL.md',
-        fileCount: 2,
-        packageSize: Buffer.byteLength(researchMd, 'utf8') + Buffer.byteLength('# 研究质量检查清单\n\n- 关键结论是否有两个独立来源？\n- 是否区分事实、推断与观点？\n- 是否给出反方观点与风险？\n', 'utf8'),
-      },
-      status: 'published',
-      visibility: 'public',
-      createdBy: params.userId,
-    },
-    {
-      id: skillWritingId,
-      orgId: params.orgId,
-      name: '结构化写作规范',
-      description: '金字塔结构、一页纸摘要、交付前自检',
-      type: 'instruction',
-      icon: 'pen',
-      category: '写作',
-      instructions: WRITING_SKILL,
-      manifest: {
-        tools: [],
-        entry: 'SKILL.md',
-        fileCount: 2,
-        packageSize: Buffer.byteLength(writingMd, 'utf8') + Buffer.byteLength('# 写作风格指南\n\n- 结论先行\n- 一段一个观点\n- 数字口径一致\n', 'utf8'),
-      },
-      status: 'published',
-      visibility: 'public',
-      createdBy: params.userId,
-    },
-  ]);
-  await db.insert(skillFiles).values([
-    {
-      id: newId('skf'),
-      orgId: params.orgId,
-      skillId: skillResearchId,
-      path: 'SKILL.md',
-      kind: 'skill',
-      mime: 'text/markdown',
-      size: Buffer.byteLength(researchMd, 'utf8'),
-      content: researchMd,
-    },
-    {
-      id: newId('skf'),
-      orgId: params.orgId,
-      skillId: skillResearchId,
-      path: 'references/checklist.md',
-      kind: 'reference',
-      mime: mimeOf('references/checklist.md'),
-      size: Buffer.byteLength('# 研究质量检查清单\n\n- 关键结论是否有两个独立来源？\n- 是否区分事实、推断与观点？\n- 是否给出反方观点与风险？\n', 'utf8'),
-      content: '# 研究质量检查清单\n\n- 关键结论是否有两个独立来源？\n- 是否区分事实、推断与观点？\n- 是否给出反方观点与风险？\n',
-    },
-    {
-      id: newId('skf'),
-      orgId: params.orgId,
-      skillId: skillWritingId,
-      path: 'SKILL.md',
-      kind: 'skill',
-      mime: 'text/markdown',
-      size: Buffer.byteLength(writingMd, 'utf8'),
-      content: writingMd,
-    },
-    {
-      id: newId('skf'),
-      orgId: params.orgId,
-      skillId: skillWritingId,
-      path: 'references/style-guide.md',
-      kind: 'reference',
-      mime: mimeOf('references/style-guide.md'),
-      size: Buffer.byteLength('# 写作风格指南\n\n- 结论先行\n- 一段一个观点\n- 数字口径一致\n', 'utf8'),
-      content: '# 写作风格指南\n\n- 结论先行\n- 一段一个观点\n- 数字口径一致\n',
-    },
-  ]);
+  await installSkillLibrary(params.orgId, params.userId);
 
   const generalId = newId('exp');
   const researcherId = newId('exp');
@@ -281,63 +167,7 @@ export async function provisionOrg(params: {
     },
   ]);
 
-  const researchFiles = (await loadSkillFiles(params.orgId, skillResearchId)).map(toPackageFile);
-  const writingFiles = (await loadSkillFiles(params.orgId, skillWritingId)).map(toPackageFile);
-  await db.insert(skillVersions).values([
-    {
-      id: newId('skv'),
-      orgId: params.orgId,
-      skillId: skillResearchId,
-      version: 1,
-      snapshot: {
-        name: '深度调研方法论',
-        description: '多源取证、交叉验证、结论先行的研究方法',
-        type: 'instruction',
-        instructions: RESEARCH_SKILL,
-        manifest: { tools: [], entry: 'SKILL.md', fileCount: researchFiles.length },
-        entry: 'SKILL.md',
-        files: researchFiles,
-        publishedAt: new Date().toISOString(),
-      },
-      createdBy: params.userId,
-    },
-    {
-      id: newId('skv'),
-      orgId: params.orgId,
-      skillId: skillWritingId,
-      version: 1,
-      snapshot: {
-        name: '结构化写作规范',
-        description: '金字塔结构、一页纸摘要、交付前自检',
-        type: 'instruction',
-        instructions: WRITING_SKILL,
-        manifest: { tools: [], entry: 'SKILL.md', fileCount: writingFiles.length },
-        entry: 'SKILL.md',
-        files: writingFiles,
-        publishedAt: new Date().toISOString(),
-      },
-      createdBy: params.userId,
-    },
-  ]);
-
-  await db.insert(expertSkills).values([
-    {
-      id: newId('esk'),
-      orgId: params.orgId,
-      expertId: researcherId,
-      skillId: skillResearchId,
-      version: 0,
-      enabled: true,
-    },
-    {
-      id: newId('esk'),
-      orgId: params.orgId,
-      expertId: docId,
-      skillId: skillWritingId,
-      version: 0,
-      enabled: true,
-    },
-  ]);
+  await bindSeedSkills(params.orgId);
 
   // 默认专家写入组织设置，供新会话快速选择
   await db.execute(

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { DATA_DIR, env } from '@/server/env';
+import { resolveInWorkspace } from '@/server/security/workspace';
 import type { Skill, SkillPackageFile } from '@/server/db/schema';
 import { loadSkillFiles, publishedPackageFiles, toPackageFile } from '@/server/skills/package';
 import type { RuntimeTool } from './types';
@@ -64,7 +65,20 @@ export async function loadSkillRuntimePackage(
   };
 }
 
-export function skillPromptBlock(pkg: SkillPackageRuntime): string {
+export function skillPromptBlock(pkg: SkillPackageRuntime, full = true): string {
+  const description = String(pkg.frontmatter.description || '').trim();
+  if (!full) {
+    const lines = [
+      `### 技能包（按需加载）：${pkg.name}`,
+      '',
+      description ? `描述：${description}` : '描述：见 SKILL.md',
+      '',
+      '需要使用时，先调用 skill_read_file 读取 SKILL.md，再按其中的工作流执行。',
+      pkg.scripts.length ? `脚本：${pkg.scripts.join('、')}` : '',
+      pkg.references.length ? `参考：${pkg.references.join('、')}` : '',
+    ].filter(Boolean);
+    return lines.join('\n');
+  }
   const lines = [`### 技能包：${pkg.name}`, '', pkg.body || '（无 SKILL.md 正文）'];
   if (pkg.references.length) {
     lines.push(
@@ -115,7 +129,7 @@ export function buildSkillPackageTools(
       name: 'skill_read_file',
       title: '读取技能包文件',
       description:
-        '读取当前专家已绑定技能包中的参考文件、脚本或资源说明。参数 skill 可以是技能名称或 ID，path 必须是包内路径。',
+        '读取当前专家已绑定技能包中的文件，包括 SKILL.md、参考文件、脚本或资源说明。参数 skill 可以是技能名称或 ID，path 必须是包内路径。',
       readonly: true,
       parameters: {
         type: 'object',
@@ -155,7 +169,7 @@ export function buildSkillPackageTools(
       name: 'run_skill_script',
       title: '执行技能脚本',
       description:
-        '执行技能包 scripts/ 下的脚本。仅支持 .mjs/.js/.cjs/.py/.sh；会在隔离工作目录中运行，超时 30 秒，并需要人工审批。',
+        '执行技能包 scripts/ 下的脚本。仅支持 .mjs/.js/.cjs/.py/.sh；会在隔离工作目录中运行，超时 30 秒，并需要人工审批。可通过 inputPath 引用工作区文件，或通过 inputText 传入不超过 20k 字符的文本；脚本可从环境变量 SKILL_INPUT 读取输入文件。脚本参数中出现的文件路径若存在于工作区，会自动复制到 input/ 并重写参数。',
       dangerous: true,
       alwaysApprove: true,
       parameters: {
@@ -167,6 +181,14 @@ export function buildSkillPackageTools(
             type: 'array',
             items: { type: 'string' },
             description: '传给脚本的参数（可选，最多 10 个）',
+          },
+          inputPath: {
+            type: 'string',
+            description: '可选：当前会话工作区中的输入文件路径，会被复制到运行目录',
+          },
+          inputText: {
+            type: 'string',
+            description: '可选：内联输入文本（<=20000 字符），会写入 input/input.txt',
           },
         },
         required: ['skill', 'script'],
@@ -209,15 +231,62 @@ export function buildSkillPackageTools(
             await fs.writeFile(target, item.content, 'utf8');
           }
         }
+        let inputFile = '';
+        const execArgs = [...rawArgs];
+        const inputPath = String(args.inputPath || '').trim();
+        const inputText = typeof args.inputText === 'string' ? args.inputText : '';
+        if (inputPath) {
+          try {
+            const source = resolveInWorkspace(ctx.orgId, ctx.scopeId, inputPath);
+            const stat = await fs.stat(source);
+            if (!stat.isFile()) return { content: 'inputPath 不是文件', isError: true };
+            if (stat.size > 2 * 1024 * 1024) return { content: '输入文件超过 2MB', isError: true };
+            const inputDir = path.join(root, 'input');
+            await fs.mkdir(inputDir, { recursive: true });
+            inputFile = path.join(inputDir, path.basename(source));
+            await fs.copyFile(source, inputFile);
+          } catch (err) {
+            return { content: `无法读取输入文件：${(err as Error).message}`, isError: true };
+          }
+        } else if (inputText) {
+          if (inputText.length > 20_000) return { content: 'inputText 超过 20000 字符', isError: true };
+          const inputDir = path.join(root, 'input');
+          await fs.mkdir(inputDir, { recursive: true });
+          inputFile = path.join(inputDir, 'input.txt');
+          await fs.writeFile(inputFile, inputText, 'utf8');
+        }
+
+        if (!inputPath) {
+          for (let index = 0; index < execArgs.length; index += 1) {
+            const candidate = execArgs[index];
+            if (!candidate || candidate.startsWith('-') || candidate.includes('\n')) continue;
+            try {
+              const source = resolveInWorkspace(ctx.orgId, ctx.scopeId, candidate);
+              const stat = await fs.stat(source);
+              if (!stat.isFile() || stat.size > 2 * 1024 * 1024) continue;
+              const inputDir = path.join(root, 'input');
+              await fs.mkdir(inputDir, { recursive: true });
+              const copied = path.join(inputDir, path.basename(source));
+              await fs.copyFile(source, copied);
+              execArgs[index] = path.posix.join('input', path.basename(source));
+              if (!inputFile) inputFile = copied;
+            } catch {
+              /* 参数不是工作区文件，交给脚本处理 */
+            }
+          }
+        }
+
         const scriptAbs = path.join(root, scriptPath);
         try {
-          const { stdout, stderr } = await execFileAsync(interpreter, [scriptAbs, ...rawArgs], {
+          const { stdout, stderr } = await execFileAsync(interpreter, [scriptAbs, ...execArgs], {
             cwd: root,
             timeout: 30_000,
             maxBuffer: 1024 * 1024,
             signal: ctx.signal,
             env: {
               PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+              SKILL_INPUT: inputFile,
+              SKILL_WORKDIR: root,
               HOME: root,
               LANG: process.env.LANG || 'en_US.UTF-8',
               NODE_ENV: process.env.NODE_ENV || 'production',

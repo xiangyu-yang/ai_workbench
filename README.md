@@ -25,7 +25,7 @@ npm run dev       # http://localhost:3100
 
 > 端口使用 **3100**，避免与常见本地服务（如 Grafana 的 3000）冲突。
 > `npm run setup` 请在应用未运行时执行：内置 PGlite 是单进程数据库。
-> 从旧版本升级时，执行 `npm run db:migrate && npm run db:backfill` 补齐技能包文件与默认应用。
+> 从旧版本升级时，执行 `npm run db:migrate && npm run db:backfill && npm run db:seed-skills` 补齐技能包、内置技能库与默认应用。`db:seed-skills -- --force` 会覆盖同名技能包文件，请谨慎使用。
 
 演示账号：
 
@@ -65,9 +65,11 @@ npm run dev       # http://localhost:3100
 
 ### 技能（标准技能包）
 - **标准结构**：`SKILL.md`（YAML frontmatter + 方法正文）、`references/`、`scripts/`、`assets/`，支持在线文件树编辑与资源上传。
-- **渐进式加载**：SKILL.md 全量注入，参考文件按需通过 `skill_read_file` 读取；脚本通过 `run_skill_script` 在隔离目录执行，强制人工审批。
+- **内置 8 个完整技能包**（每个都含 references/scripts/assets）：周报生成器、数据分析与洞察、竞品研究、会议纪要与行动项、客服工单分级与回复、深度调研方法论、结构化写作规范、RFP 投标响应。
+- **渐进式加载**：按用户问题匹配 1-2 个技能加载完整 SKILL.md，其余只注入目录；参考文件通过 `skill_read_file` 按需读取，避免上下文膨胀。
+- **脚本执行**：`run_skill_script` 在隔离目录运行，支持 `inputPath` / `inputText`，自动复制脚本参数中引用的工作区文件；30 秒超时、强制人工审批，`SKILL_ALLOW_SCRIPTS=false` 可关闭。
 - **发布与版本**：发布时校验包结构并生成不可变快照，专家按版本绑定；HTTP 工具声明保留在 manifest 中。
-- **模板**：空白 / 研究分析 / 结构化写作 / 数据分析四类起始模板。
+- **模板**：空白 / 研究分析 / 结构化写作 / 数据分析四类起始模板；`npm run db:seed-skills` 可幂等补齐内置库。
 
 ### 应用中心
 统一纳管内部专家应用与外部 AI 工具：内部应用绑定专家，点击直接进入带应用标识的对话；外部应用登记 http(s) 地址后一键新开。支持分类、搜索、最近使用、启停与审计，是工作台的超级入口。

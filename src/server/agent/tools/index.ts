@@ -53,6 +53,28 @@ function dedupe(tools: RuntimeTool[]): RuntimeTool[] {
   return tools;
 }
 
+function selectFullSkillNames(packages: SkillPackageRuntime[], query: string): Set<string> {
+  if (packages.length <= 2) return new Set(packages.map((pkg) => pkg.name));
+  const text = (query || '').toLowerCase();
+  const grams = new Set<string>();
+  for (const word of text.match(/[a-z0-9]{2,}|[\u4e00-\u9fa5]{2,4}/g) || []) grams.add(word);
+  for (let i = 0; i < text.length - 1; i += 1) {
+    const pair = text.slice(i, i + 2);
+    if (/^[\u4e00-\u9fa5]{2}$/.test(pair)) grams.add(pair);
+  }
+  const ranked = packages
+    .map((pkg) => {
+      const haystack = `${pkg.name} ${String(pkg.frontmatter.description || '')} ${pkg.references.join(' ')}`.toLowerCase();
+      let score = text.includes(pkg.name.toLowerCase()) ? 100 : 0;
+      for (const gram of grams) if (gram && haystack.includes(gram)) score += Math.min(gram.length, 4);
+      return { name: pkg.name, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2);
+  return new Set(ranked.map((item) => item.name));
+}
+
 export async function buildToolset(params: {
   orgId: string;
   expert: Expert | null;
@@ -60,6 +82,7 @@ export async function buildToolset(params: {
   kbIds: string[];
   taskId?: string | null;
   depth?: number;
+  query?: string;
 }): Promise<{ tools: RuntimeTool[]; instructions: string[]; hasDelegate: boolean }> {
   const { orgId, expert, mode, kbIds } = params;
   const depth = params.depth || 0;
@@ -91,10 +114,13 @@ export async function buildToolset(params: {
         const pkg = await loadSkillRuntimePackage(orgId, binding.skill, binding.version);
         if (pkg) {
           askPackages.push(pkg);
-          instructions.push(skillPromptBlock(pkg));
         } else if (binding.skill.instructions?.trim()) {
           instructions.push(`### 技能：${binding.skill.name}\n${binding.skill.instructions.trim()}`);
         }
+      }
+      const askFull = selectFullSkillNames(askPackages, params.query || '');
+      for (const pkg of askPackages) {
+        instructions.push(skillPromptBlock(pkg, askFull.has(pkg.name)));
       }
       readonlyTools.push(...buildSkillPackageTools(askPackages, { allowScripts: false }));
     }
@@ -170,7 +196,6 @@ export async function buildToolset(params: {
       const pkg = await loadSkillRuntimePackage(orgId, binding.skill, binding.version);
       if (pkg) {
         skillPackages.push(pkg);
-        instructions.push(skillPromptBlock(pkg));
       } else if (record.instructions?.trim()) {
         instructions.push(`### 技能：${record.name}\n${record.instructions.trim()}`);
       }
@@ -187,6 +212,11 @@ export async function buildToolset(params: {
         );
       }
       skillIndex += 1;
+    }
+
+    const fullSkills = selectFullSkillNames(skillPackages, params.query || '');
+    for (const pkg of skillPackages) {
+      instructions.push(skillPromptBlock(pkg, fullSkills.has(pkg.name)));
     }
 
     tools.push(

@@ -111,6 +111,15 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 | 知识库检索无结果 | 文档处理失败、嵌入维度不一致 | 文档列表查看状态；召回测试；必要时重传 |
 | `quota_exceeded` (402) | 月度 token 配额 | 设置 → 组织调整配额 |
 
+## 技能库升级
+
+```bash
+npm run db:seed-skills                 # 仅补齐缺失的内置技能
+npm run db:seed-skills -- --force      # 覆盖同名技能包并生成新版本（会替换包文件）
+```
+
+内置库定义在 `src/server/skills/library.ts`；新组织在注册时自动安装。升级前先停止应用（PGlite 单进程），并备份 `DATA_DIR`。
+
 ## 技能脚本安全
 
 - `SKILL_ALLOW_SCRIPTS=true` 才会向专家暴露 `run_skill_script`；该工具即使专家策略为 never 也强制人工审批。
