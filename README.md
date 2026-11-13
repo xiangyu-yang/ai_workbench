@@ -65,7 +65,7 @@ npm run dev       # http://localhost:3100
 
 ### 技能（标准技能包）
 - **标准结构**：`SKILL.md`（YAML frontmatter + 方法正文）、`references/`、`scripts/`、`assets/`，支持在线文件树编辑与资源上传。
-- **内置 8 个完整技能包**（每个都含 references/scripts/assets）：周报生成器、数据分析与洞察、竞品研究、会议纪要与行动项、客服工单分级与回复、深度调研方法论、结构化写作规范、RFP 投标响应。
+- **内置 9 个完整技能包**（每个都含 references/scripts/assets）：周报生成器、数据分析与洞察、竞品研究、会议纪要与行动项、客服工单分级与回复、深度调研方法论、结构化写作规范、RFP 投标响应、股票深度分析与预测。
 - **渐进式加载**：按用户问题匹配 1-2 个技能加载完整 SKILL.md，其余只注入目录；参考文件通过 `skill_read_file` 按需读取，避免上下文膨胀。
 - **脚本执行**：`run_skill_script` 在隔离目录运行，支持 `inputPath` / `inputText`，自动复制脚本参数中引用的工作区文件；30 秒超时、强制人工审批，`SKILL_ALLOW_SCRIPTS=false` 可关闭。
 - **发布与版本**：发布时校验包结构并生成不可变快照，专家按版本绑定；HTTP 工具声明保留在 manifest 中。

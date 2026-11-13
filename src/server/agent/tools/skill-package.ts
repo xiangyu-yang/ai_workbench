@@ -169,7 +169,7 @@ export function buildSkillPackageTools(
       name: 'run_skill_script',
       title: '执行技能脚本',
       description:
-        '执行技能包 scripts/ 下的脚本。仅支持 .mjs/.js/.cjs/.py/.sh；会在隔离工作目录中运行，超时 30 秒，并需要人工审批。可通过 inputPath 引用工作区文件，或通过 inputText 传入不超过 20k 字符的文本；脚本可从环境变量 SKILL_INPUT 读取输入文件。脚本参数中出现的文件路径若存在于工作区，会自动复制到 input/ 并重写参数。',
+        '执行技能包 scripts/ 下的脚本。仅支持 .mjs/.js/.cjs/.py/.sh；会在隔离工作目录中运行，超时 30 秒，并需要人工审批。可通过 inputPath 引用工作区文件或技能包内文件（如 assets/data.json），或通过 inputText 传入不超过 20k 字符的文本；脚本可从环境变量 SKILL_INPUT 读取输入文件。脚本参数中出现的文件路径若存在于工作区，会自动复制到 input/ 并重写参数。',
       dangerous: true,
       alwaysApprove: true,
       parameters: {
@@ -237,14 +237,19 @@ export function buildSkillPackageTools(
         const inputText = typeof args.inputText === 'string' ? args.inputText : '';
         if (inputPath) {
           try {
-            const source = resolveInWorkspace(ctx.orgId, ctx.scopeId, inputPath);
-            const stat = await fs.stat(source);
-            if (!stat.isFile()) return { content: 'inputPath 不是文件', isError: true };
-            if (stat.size > 2 * 1024 * 1024) return { content: '输入文件超过 2MB', isError: true };
-            const inputDir = path.join(root, 'input');
-            await fs.mkdir(inputDir, { recursive: true });
-            inputFile = path.join(inputDir, path.basename(source));
-            await fs.copyFile(source, inputFile);
+            const packageFile = pkg.files.find((item) => item.path === inputPath);
+            if (packageFile) {
+              inputFile = path.join(root, packageFile.path);
+            } else {
+              const source = resolveInWorkspace(ctx.orgId, ctx.scopeId, inputPath);
+              const stat = await fs.stat(source);
+              if (!stat.isFile()) return { content: 'inputPath 不是文件', isError: true };
+              if (stat.size > 2 * 1024 * 1024) return { content: '输入文件超过 2MB', isError: true };
+              const inputDir = path.join(root, 'input');
+              await fs.mkdir(inputDir, { recursive: true });
+              inputFile = path.join(inputDir, path.basename(source));
+              await fs.copyFile(source, inputFile);
+            }
           } catch (err) {
             return { content: `无法读取输入文件：${(err as Error).message}`, isError: true };
           }

@@ -201,6 +201,7 @@ while (step < maxSteps) {
 - **脚本执行**：`run_skill_script` 在 `DATA_DIR/skill-runs/{org}/{skill}/{version}` 隔离目录执行，支持 Node/Python/Bash，30s 超时、输出截断、强制人工审批；`SKILL_ALLOW_SCRIPTS=false` 可整体关闭。
 - **发布**：校验 SKILL.md/frontmatter/文件类型与大小 → 生成不可变快照（含全部文件）→ 版本自增；专家按版本绑定。
 - **HTTP Tool Skill**：同一包内通过 manifest 声明 JSON Schema 工具 + 请求模板，支持 `{{param}}` 与 `{{env.VAR}}`。
+- **内置库**：9 个完整技能包，覆盖周报、数据分析、竞品研究、会议行动项、客服分级、深度研究、结构化写作、RFP 投标、股票深度分析与预测；每个都含 references/scripts/assets。
 
 ### 6.2.1 应用中心（Apps）
 - 内部应用：绑定专家，点击进入带应用标识的对话，复用专家、技能、知识与工具治理。

@@ -28,6 +28,8 @@ export type SkillDefinition = {
   bindTo: string[];
 };
 
+import { STOCK_SKILL } from './stock-skill';
+
 const text = (path: string, content: string): SkillSeedFile => ({ path, content });
 
 /* ─────────────────────────── 1. 周报生成器 ─────────────────────────── */
@@ -2203,4 +2205,5 @@ export const SKILL_LIBRARY: SkillDefinition[] = [
       text('assets/proposal-outline.md', PROPOSAL_OUTLINE),
     ],
   },
+  STOCK_SKILL,
 ];
