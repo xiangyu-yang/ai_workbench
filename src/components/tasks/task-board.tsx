@@ -325,7 +325,7 @@ export function TaskBoard({
           <Field label="执行专家">
             <Select
               value={form.expertId}
-              onChange={(event) => setForm((prev) => ({ ...prev, expertId: event.target.value }))}
+              onChange={(event) => setForm((prev) => ({ ...prev, expertId: event.target.value, skillIds: null }))}
             >
               {experts.map((expert) => (
                 <option key={expert.id} value={expert.id}>

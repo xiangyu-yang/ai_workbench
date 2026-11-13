@@ -56,21 +56,25 @@ const SUGGESTIONS = [
     icon: FileText,
     title: '写一份季度复盘报告',
     prompt: '帮我写一份 Q4 增长复盘报告，包含关键数据、问题归因与下一步行动计划。',
+    mode: 'agent',
   },
   {
     icon: ListChecks,
     title: '把会议纪要变成行动项',
     prompt: '把下面这段会议纪要整理成结构化的行动项表格，标注负责人与截止时间：\n\n',
+    mode: 'agent',
   },
   {
     icon: ShieldCheck,
     title: '基于知识库回答问题',
     prompt: '根据组织知识库，说明差旅住宿标准与报销时效分别是多少？',
+    mode: 'ask',
   },
   {
     icon: Wand2,
     title: '分析问题并给出方案',
     prompt: '分析近期客户支持工单中的高频问题，给出优先级排序与改进方案。',
+    mode: 'agent',
   },
 ];
 
@@ -119,7 +123,11 @@ export function ChatView({
     initialExpertId || experts[0]?.id || null,
   );
   const [mode, setMode] = React.useState(initialMode || 'agent');
-  const [skillIds, setSkillIds] = React.useState<string[] | null>(initialSkillIds);
+  const [skillIds, setSkillIds] = React.useState<string[] | null>(() =>
+    initialSkillIds === null
+      ? null
+      : initialSkillIds.filter((id) => skills.some((skill) => skill.id === id)),
+  );
   const [title, setTitle] = React.useState(initialTitle);
   const [streaming, setStreaming] = React.useState(
     initialMessages.some((m) => m.status === 'streaming'),
@@ -396,9 +404,10 @@ export function ChatView({
     [router],
   );
 
-  const send = async (text: string, attachments: AttachmentInfo[] = []) => {
+  const send = async (text: string, attachments: AttachmentInfo[] = [], overrideMode?: string) => {
     const clean = text.trim();
     if ((!clean && !attachments.length) || streaming) return;
+    const activeMode = overrideMode || mode;
     setError('');
     setStreaming(true);
     atBottomRef.current = true;
@@ -450,7 +459,7 @@ export function ChatView({
         body: JSON.stringify({
           threadId: threadIdRef.current || undefined,
           expertId,
-          mode,
+          mode: activeMode,
           skillIds,
           text: clean,
           attachmentIds: attachments.map((item) => item.id),
@@ -617,7 +626,12 @@ export function ChatView({
           <>
             <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
               <div className="flex min-h-full flex-col items-center justify-center px-5 py-8">
-                <EmptyHero onPick={(prompt) => void send(prompt)} />
+                <EmptyHero
+                  onPick={(prompt, nextMode) => {
+                    if (nextMode) setMode(nextMode);
+                    void send(prompt, [], nextMode);
+                  }}
+                />
               </div>
             </div>
             <div className="shrink-0 border-t border-line/50 bg-canvas/80 px-5 pb-4 pt-3 backdrop-blur">
@@ -917,7 +931,7 @@ function ChatHeader({
   );
 }
 
-function EmptyHero({ onPick }: { onPick: (prompt: string) => void }) {
+function EmptyHero({ onPick }: { onPick: (prompt: string, mode?: string) => void }) {
   return (
     <div className="w-full max-w-[820px] animate-fade-up">
       <div className="mb-8 flex flex-col items-center text-center">
@@ -937,7 +951,7 @@ function EmptyHero({ onPick }: { onPick: (prompt: string) => void }) {
           <button
             key={item.title}
             type="button"
-            onClick={() => onPick(item.prompt)}
+            onClick={() => onPick(item.prompt, item.mode)}
             className="group flex items-start gap-3 rounded-xl border border-line bg-surface-2 p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-accent/25 hover:bg-accent/[0.04]"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-muted transition group-hover:text-accent-2">
