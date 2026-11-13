@@ -1,7 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { requirePageAuth } from '@/server/auth/session';
 import { getDb } from '@/server/db/client';
-import { apps, experts, modelProviders } from '@/server/db/schema';
+import { apps, expertSkills, experts, modelProviders, skills } from '@/server/db/schema';
 import { ChatView } from '@/components/chat/chat-view';
 import { listSelectableSkills } from '@/server/skills/selectable';
 
@@ -16,7 +16,7 @@ export default async function NewChatPage({
   const auth = await requirePageAuth();
   const params = await searchParams;
   const db = await getDb();
-  const [expertRows, providerRows, appRows, skillRows] = await Promise.all([
+  const [expertRows, providerRows, appRows, skillRows, expertSkillRows] = await Promise.all([
     db
       .select()
       .from(experts)
@@ -35,6 +35,11 @@ export default async function NewChatPage({
           .limit(1)
       : Promise.resolve([]),
     listSelectableSkills(auth.org.id, auth.user.id, auth.role),
+    db
+      .select({ expertId: expertSkills.expertId, manifest: skills.manifest })
+      .from(expertSkills)
+      .innerJoin(skills, eq(skills.id, expertSkills.skillId))
+      .where(and(eq(expertSkills.orgId, auth.org.id), eq(expertSkills.enabled, true))),
   ]);
 
   const launchedApp = appRows[0] || null;
@@ -49,6 +54,11 @@ export default async function NewChatPage({
   const modelLabel =
     defaultExpert?.modelId || providerRows[0]?.defaultModel || 'Cuter 演示模型';
   const requestedExpert = Boolean(params.expert || launchedApp?.expertId);
+  const executionExperts = new Set(
+    expertSkillRows
+      .filter((row) => row.manifest?.requiresExecution)
+      .map((row) => row.expertId),
+  );
 
   return (
     <ChatView
@@ -69,6 +79,7 @@ export default async function NewChatPage({
         defaultMode: expert.defaultMode,
         toolPolicy: expert.toolPolicy,
         visibility: expert.visibility,
+        requiresExecution: executionExperts.has(expert.id),
       }))}
       initialExpertId={defaultExpertId}
       initialSkillIds={null}

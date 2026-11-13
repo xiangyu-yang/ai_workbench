@@ -72,6 +72,31 @@ export async function assertSafeUrl(raw: string, allowlist: string[] = []): Prom
 
 export type FetchTextResult = { text: string; contentType: string; finalUrl: string; status: number };
 
+function decodeBody(bytes: Uint8Array, contentType: string): string {
+  const head = Buffer.from(bytes.slice(0, 4096)).toString('latin1');
+  const headerCharset = /charset\s*=\s*["']?([\w-]+)/i.exec(contentType)?.[1] || '';
+  const metaCharset = /charset\s*=\s*["']?([\w-]+)/i.exec(head)?.[1] || '';
+  let charset = (headerCharset || metaCharset || 'utf-8').toLowerCase();
+  if (charset === 'gb2312' || charset === 'gb18030') charset = 'gbk';
+  const tryDecode = (name: string) => {
+    try {
+      return new TextDecoder(name, { fatal: false }).decode(bytes);
+    } catch {
+      return '';
+    }
+  };
+  let text = tryDecode(charset);
+  // 有些站点返回 text/html 不带 charset，但正文是 GBK；用替换字符比例做兜底。
+  if (charset === 'utf-8' || !text) {
+    const replacementRatio = (text.match(/\uFFFD/g) || []).length / Math.max(text.length, 1);
+    if (!text || replacementRatio > 0.01) {
+      const gbk = tryDecode('gbk');
+      if (gbk) text = gbk;
+    }
+  }
+  return text;
+}
+
 export async function fetchText(
   rawUrl: string,
   init: RequestInit = {},
@@ -109,22 +134,21 @@ export async function fetchText(
 
       const contentType = response.headers.get('content-type') || '';
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let text = '';
+      const chunks: Uint8Array[] = [];
       let bytes = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         bytes += value.byteLength;
+        chunks.push(value);
         if (bytes > maxBytes) {
-          text += decoder.decode(value, { stream: true });
           await reader.cancel();
           break;
         }
-        text += decoder.decode(value, { stream: true });
       }
-      text += decoder.decode();
-      return { text: text.slice(0, maxBytes), contentType, finalUrl: current, status: response.status };
+      const merged = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+      const text = decodeBody(merged.subarray(0, maxBytes), contentType);
+      return { text, contentType, finalUrl: current, status: response.status };
     } finally {
       clearTimeout(timer);
     }

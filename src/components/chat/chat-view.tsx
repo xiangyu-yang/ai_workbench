@@ -157,6 +157,16 @@ export function ChatView({
     setExpertId(id);
     setSkillIds(null);
   };
+  React.useEffect(() => {
+    const expert = experts.find((item) => item.id === expertId);
+    if (expert?.requiresExecution && mode !== 'agent') {
+      setMode('agent');
+      toast('该专家的技能需要执行模式，已自动切换');
+    }
+    // 只在专家变化时检查；用户仍可在发送前手动切换模式
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expertId]);
+
   const changeSkills = (ids: string[] | null) => {
     setSkillIds(ids);
     const requiresExecution = (ids || []).some(
@@ -499,9 +509,9 @@ export function ChatView({
     const clean = text.trim();
     if ((!clean && !attachments.length) || streaming) return;
     const requestedMode = overrideMode || mode;
-    const requiresExecution = (skillIds || []).some(
-      (id) => skills.find((skill) => skill.id === id)?.requiresExecution,
-    );
+    const requiresExecution =
+      Boolean(selectedExpert?.requiresExecution) ||
+      (skillIds || []).some((id) => skills.find((skill) => skill.id === id)?.requiresExecution);
     const activeMode = requiresExecution && requestedMode !== 'agent' ? 'agent' : requestedMode;
     if (activeMode !== requestedMode) {
       setMode('agent');

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getDb } from '@/server/db/client';
 import {
   attachments,
+  expertSkills,
   experts,
   messages,
   skills,
@@ -92,6 +93,25 @@ export async function POST(req: Request) {
         .orderBy(asc(experts.createdAt))
         .limit(1);
       expertId = fallbackRows[0]?.id || null;
+    }
+
+    // 专家自动绑定的技能也可能要求脚本能力（如 Atlas + 股票技能）。
+    // 这时即使请求是问答/规划，也升级为执行，避免 run_skill_script 不存在。
+    if (expertId && mode !== 'agent') {
+      const expertSkillRows = await db
+        .select({ manifest: skills.manifest })
+        .from(expertSkills)
+        .innerJoin(skills, eq(skills.id, expertSkills.skillId))
+        .where(
+          and(
+            eq(expertSkills.orgId, auth.org.id),
+            eq(expertSkills.expertId, expertId),
+            eq(expertSkills.enabled, true),
+          ),
+        );
+      if (expertSkillRows.some((row) => row.manifest?.requiresExecution)) {
+        mode = 'agent';
+      }
     }
 
     const attachmentRows = attachmentIds.length

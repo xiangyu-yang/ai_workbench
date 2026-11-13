@@ -6,9 +6,11 @@ import {
   apps,
   approvals,
   artifacts,
+  expertSkills,
   experts,
   messages,
   modelProviders,
+  skills,
   threads,
 } from '@/server/db/schema';
 import { ChatView } from '@/components/chat/chat-view';
@@ -49,7 +51,7 @@ export default async function ChatThreadPage({
   const thread = threadRows[0];
   if (!thread || thread.userId !== auth.user.id || thread.source !== 'chat') notFound();
 
-  const [messageRows, artifactRows, approvalRows, expertRows, providerRows, appRows, skillRows] = await Promise.all([
+  const [messageRows, artifactRows, approvalRows, expertRows, providerRows, appRows, skillRows, expertSkillRows] = await Promise.all([
     db
       .select()
       .from(messages)
@@ -95,7 +97,18 @@ export default async function ChatThreadPage({
           .limit(1)
       : Promise.resolve([]),
     listSelectableSkills(auth.org.id, auth.user.id, auth.role),
+    db
+      .select({ expertId: expertSkills.expertId, manifest: skills.manifest })
+      .from(expertSkills)
+      .innerJoin(skills, eq(skills.id, expertSkills.skillId))
+      .where(and(eq(expertSkills.orgId, auth.org.id), eq(expertSkills.enabled, true))),
   ]);
+
+  const executionExperts = new Set(
+    expertSkillRows
+      .filter((row) => row.manifest?.requiresExecution)
+      .map((row) => row.expertId),
+  );
   const launchedApp = appRows[0] || null;
 
   const expert = expertRows.find((item) => item.id === thread.expertId);
@@ -141,6 +154,7 @@ export default async function ChatThreadPage({
         defaultMode: item.defaultMode,
         toolPolicy: item.toolPolicy,
         visibility: item.visibility,
+        requiresExecution: executionExperts.has(item.id),
       }))}
       initialExpertId={thread.expertId}
       initialSkillIds={thread.skillIds ?? null}
