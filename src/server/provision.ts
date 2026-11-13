@@ -3,6 +3,7 @@ import { getDb } from '@/server/db/client';
 import { apps, experts } from '@/server/db/schema';
 import { newId } from '@/server/ids';
 import { bindSeedSkills, installSkillLibrary } from '@/server/skills/install';
+import { STOCK_ADVISOR, STOCK_APP } from '@/server/experts/stock';
 
 const ANALYST_PROMPT = `你是组织内的数据分析师，擅长把模糊问题转为可验证的分析框架。
 工作方式：
@@ -43,6 +44,7 @@ export async function provisionOrg(params: {
   const researcherId = newId('exp');
   const docId = newId('exp');
   const analystId = newId('exp');
+  const stockAdvisorId = newId('exp');
 
   await db.insert(experts).values([
     {
@@ -112,7 +114,23 @@ export async function provisionOrg(params: {
     },
   ]);
 
+  await db.insert(experts).values([
+    {
+      ...STOCK_ADVISOR,
+      id: stockAdvisorId,
+      orgId: params.orgId,
+      createdBy: params.userId,
+    },
+  ]);
+
   await db.insert(apps).values([
+    {
+      ...STOCK_APP,
+      id: newId('app'),
+      orgId: params.orgId,
+      expertId: stockAdvisorId,
+      createdBy: params.userId,
+    },
     {
       id: newId('app'),
       orgId: params.orgId,

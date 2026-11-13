@@ -2079,7 +2079,7 @@ export const SKILL_LIBRARY: SkillDefinition[] = [
     license: 'internal',
     allowedTools: ['workspace_read', 'workspace_write', 'knowledge_search', 'run_skill_script'],
     body: DATA_INSIGHT_BODY,
-    bindTo: ['数据分析师', '通用助手'],
+    bindTo: ['数据分析师', '通用助手', 'Atlas 首席策略官'],
     files: [
       text('references/analysis-playbook.md', ANALYSIS_PLAYBOOK),
       text('references/metrics-glossary.md', WEEKLY_METRICS_GLOSSARY),
@@ -2099,7 +2099,7 @@ export const SKILL_LIBRARY: SkillDefinition[] = [
     license: 'internal',
     allowedTools: ['knowledge_search', 'web_search', 'read_url', 'workspace_write', 'run_skill_script'],
     body: COMPETITOR_BODY,
-    bindTo: ['深度研究员'],
+    bindTo: ['深度研究员', 'Atlas 首席策略官'],
     files: [
       text('references/research-dimensions.md', RESEARCH_DIMENSIONS),
       text('references/evidence-standards.md', EVIDENCE_STANDARDS),
@@ -2157,7 +2157,7 @@ export const SKILL_LIBRARY: SkillDefinition[] = [
     license: 'internal',
     allowedTools: ['knowledge_search', 'web_search', 'read_url', 'workspace_write', 'run_skill_script'],
     body: RESEARCH_BODY,
-    bindTo: ['深度研究员'],
+    bindTo: ['深度研究员', 'Atlas 首席策略官'],
     files: [
       text('references/evidence-standards.md', EVIDENCE_STANDARDS),
       text('references/quality-checklist.md', RESEARCH_QUALITY),

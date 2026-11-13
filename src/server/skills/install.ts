@@ -236,7 +236,7 @@ export async function bindSeedSkills(orgId: string): Promise<number> {
 export async function installSkillLibrary(
   orgId: string,
   userId: string,
-  options: { force?: boolean } = {},
+  options: { force?: boolean; only?: string[] } = {},
 ): Promise<{ ids: Map<string, string>; created: number; updated: number; skipped: number }> {
   const db = await getDb();
   const existingRows = await db
@@ -249,7 +249,10 @@ export async function installSkillLibrary(
   let updated = 0;
   let skipped = 0;
 
-  for (const def of SKILL_LIBRARY) {
+  const definitions = options.only?.length
+    ? SKILL_LIBRARY.filter((def) => options.only?.includes(def.name))
+    : SKILL_LIBRARY;
+  for (const def of definitions) {
     const current = existing.get(def.name);
     if (!current) {
       const id = await createSkill(orgId, userId, def);

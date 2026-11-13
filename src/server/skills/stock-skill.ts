@@ -1,4 +1,11 @@
 import type { SkillDefinition } from './library';
+import {
+  DAILY_SNAPSHOT_TEMPLATE,
+  FETCH_MARKET_SCRIPT,
+  LIVE_MARKET_SCAN_SCRIPT,
+  MARKET_DATA_REFERENCE,
+  VOLUME_PRICE_REFERENCE,
+} from './stock-data';
 
 const STOCK_BODY = `# 股票深度分析与预测
 
@@ -30,7 +37,19 @@ const STOCK_BODY = `# 股票深度分析与预测
 生意模式 → 行业结构 → 护城河 → 管理层与治理 → 财务质量。
 不要一上来堆指标；先回答“这家公司靠什么赚钱、能否持续”。
 
-### 2. 取证与数据审计
+### 2. 获取真实行情与量价诊断
+
+必须优先获取真实日线，不允许凭记忆写“今日行情”：
+- A 股：600941 / 600941.SH；港股：00700.HK；美股：AAPL。
+- 调用 run_skill_script：
+  - script：scripts/live_market_scan.py
+  - args：["--symbol","600941","--days","250","--format","markdown"]
+- 脚本会拉取腾讯公开行情，输出：收盘/涨跌幅/成交额、换手率、5 日与 20 日量比（当日成交量/前 N 日均量）、量价组合（放量上涨/放量下跌/缩量上涨/缩量下跌）、5 日量价背离、OBV/MFI/VWAP、均线、RSI、ATR、支撑阻力。
+- 如果实时接口失败，先调用 scripts/fetch_market_data.py 检查代码与网络；仍失败则让用户上传 CSV 或稍后重试。**禁止编造当日行情。**
+- 报告第一屏必须有“行情快照 + 量价诊断”，并注明数据截止时间与来源。
+- 如果用户只提供 CSV，则用 scripts/technical_scan.py 分析，并注明数据由用户提供、可能非最新。
+
+### 3. 取证与数据审计
 
 - 一手来源优先：年报/季报、招股书、交易所公告、业绩会、官方指引、监管文件。
 - 二手来源：权威行业报告、同业财报、可信媒体；标注日期与原文位置。
@@ -38,7 +57,7 @@ const STOCK_BODY = `# 股票深度分析与预测
 - 至少一个反方来源；不把管理层指引当已实现事实。
 - 数据不足时写“未获取”，不要用记忆或估算冒充事实。
 
-### 3. 基本面与财务质量
+### 4. 基本面与财务质量
 
 - 增长：收入/利润/用户/单价拆分，区分量、价、结构。
 - 盈利：毛利率、经营利润率、净利率、ROIC/ROE，和同业、历史比。
@@ -47,7 +66,7 @@ const STOCK_BODY = `# 股票深度分析与预测
 - 稀释：股本变化、股权激励、可转债。
 - 会计质量：应收/存货/合同负债异常、非经常性损益、关联交易。
 
-### 4. 估值：多方法交叉
+### 5. 估值：多方法交叉
 
 读取 references/valuation-playbook.md，至少使用两种方法：
 - **DCF**：明确 FCF 口径、增长、WACC、永续增长、净债务、股本。
@@ -58,9 +77,9 @@ const STOCK_BODY = `# 股票深度分析与预测
 
 使用 scripts/equity_valuation.py 计算 DCF、反向 DCF、可比 PE 和情景期望值；输入 JSON，资产中有示例。脚本输出的数字仍需你检查假设，不要把模型输出当成事实。
 
-### 5. 技术面与交易时机（可选）
+### 6. 技术面与交易时机（可选）
 
-如果用户需要入场/止损/仓位，读取 references/technical-playbook.md，并用 scripts/technical_scan.py 处理价格 CSV。
+如果用户需要入场/止损/仓位，读取 references/technical-playbook.md，并结合 live_market_scan.py 的输出（或用户 CSV 的 technical_scan.py 结果）。
 技术面只用于**执行时机和风险管理**，不能替代基本面 thesis。至少看：
 - 趋势：价格与 SMA20/60/200、均线排列；
 - 动量：RSI、MACD，避免超买追高；
@@ -68,13 +87,13 @@ const STOCK_BODY = `# 股票深度分析与预测
 - 量价：放量突破/缩量回调；
 - 关键位：近期高低点、成交密集区、前高/前低。
 
-### 6. 催化剂与风险
+### 7. 催化剂与风险
 
 - 催化剂：财报、指引、产品发布、价格调整、政策、并购、回购、指数纳入。
 - 风险：需求、竞争、价格战、监管、汇率、利率、地缘、流动性、治理、会计。
 - 为每个催化剂/风险标注时间窗、概率、影响方向与可验证信号。
 
-### 7. 概率化预测
+### 8. 概率化预测
 
 不要给单点“必涨/必跌”结论。使用 assets/scenario-sample.json 的结构：
 - 悲观 / 基准 / 乐观三种情景；
@@ -85,14 +104,16 @@ const STOCK_BODY = `# 股票深度分析与预测
 
 预测是条件概率，不是承诺。必须写“不构成投资建议”。
 
-### 8. 生成报告
+### 9. 生成报告
 
 按 assets/equity-research-template.md 输出：
 摘要（结论/评级/目标区间/置信度）→ 生意与行业 → 护城河 → 财务 → 估值 → 情景预测 → 催化剂 → 风险 → 反方观点 → 数据与来源。
 用 workspace_write 写入 Markdown，文件名含标的与日期。
 
-### 9. 质量门槛
+### 10. 质量门槛
 
+- 报告开头有真实行情快照、数据截止日与来源；不得用记忆替代当日行情。
+- 量价必须说明：5/20 日量比（当日成交量/前 N 日均量）、量价组合、5 日背离、关键位；不能只写“放量”或“缩量”，也不要把量比解释成“N 日均量/60 日均量”。量比阈值以脚本为准：≥1.2 放量、≤0.8 缩量，不要简单写成“>1 就是放量”。
 - 每个关键数字有来源、日期、口径。
 - 至少两种估值方法，且说明差异。
 - 至少一个反方观点和失效条件。
@@ -103,7 +124,8 @@ const STOCK_BODY = `# 股票深度分析与预测
 
 ## 输出规范
 
-- 开头给“结论卡片”：评级（买入/增持/中性/减持/回避）、时间维度、目标区间、概率加权收益、置信度。
+- 开头先给“行情快照 + 量价诊断”，再给结论卡片；写明数据截止日、来源、5/20 日量比与量价组合。
+- 结论卡片：评级（买入/增持/中性/减持/回避）、时间维度、目标区间、概率加权收益、置信度。
 - 目标价用区间，不用单点；说明对应情景与概率。
 - 估值表展示关键假设与敏感性（WACC ±1%、增长 ±2%）。
 - 技术面单独成节，明确“仅用于执行”。
@@ -115,19 +137,24 @@ const STOCK_BODY = `# 股票深度分析与预测
 - references/research-framework.md：五层研究框架与检查清单
 - references/valuation-playbook.md：DCF/反向 DCF/相对估值/情景方法
 - references/technical-playbook.md：趋势、动量、波动与关键位
+- references/market-data-sources.md：A/H/US 行情代码、公开数据源、字段口径与限制
+- references/volume-price-playbook.md：放量/缩量、量价背离、OBV/MFI/VWAP 的实战解释
 - references/risk-discipline.md：仓位、回撤、行为偏差与合规
 - scripts/equity_valuation.py：DCF、反向 DCF、可比 PE、情景期望值
-- scripts/technical_scan.py：均线、RSI、MACD、ATR、布林带、回撤、支撑阻力
+- scripts/fetch_market_data.py：拉取 A/H/US 日线与实时快照
+- scripts/live_market_scan.py：实时行情 + 量价诊断 + 技术面，一条命令产出
+- scripts/technical_scan.py：用户 CSV 的均线、RSI、MACD、ATR、布林带、回撤、支撑阻力
 - scripts/risk_position.py：仓位、止损、R 倍数、参数 VaR
 - assets/equity-research-template.md：完整研究报告模板
 - assets/fundamentals-sample.json：估值脚本输入示例（非真实数据）
 - assets/scenario-sample.json：三情景预测示例
 - assets/price-sample.csv：技术扫描输入示例（合成数据）
 - assets/valuation-checklist.md：估值与预测检查清单
+- assets/daily-market-snapshot.md：行情快照与量价诊断模板
 
 ## 脚本约定
 
-脚本从 SKILL_INPUT 或 --input 读取 JSON/CSV，输出 JSON 或 Markdown。脚本只做计算与格式化；假设是否合理由你判断。不要把脚本输出直接当投资结论。
+脚本从 SKILL_INPUT 或 --input 读取 JSON/CSV，输出 JSON 或 Markdown。实时分析优先使用 live_market_scan.py；它内部调用 fetch_market_data.py。脚本只做计算与格式化；假设是否合理由你判断。不要把脚本输出直接当投资结论。
 `;
 
 const RESEARCH_FRAMEWORK = `# 股票研究五层框架
@@ -1121,13 +1148,17 @@ export const STOCK_SKILL: SkillDefinition = {
     'run_skill_script',
   ],
   body: STOCK_BODY,
-  bindTo: ['深度研究员', '数据分析师'],
+  bindTo: ['深度研究员', '数据分析师', 'Atlas 首席策略官'],
   files: [
     { path: 'references/research-framework.md', content: RESEARCH_FRAMEWORK },
     { path: 'references/valuation-playbook.md', content: VALUATION_PLAYBOOK },
     { path: 'references/technical-playbook.md', content: TECHNICAL_PLAYBOOK },
+    { path: 'references/market-data-sources.md', content: MARKET_DATA_REFERENCE },
+    { path: 'references/volume-price-playbook.md', content: VOLUME_PRICE_REFERENCE },
     { path: 'references/risk-discipline.md', content: RISK_DISCIPLINE },
     { path: 'scripts/equity_valuation.py', content: EQUITY_VALUATION_SCRIPT },
+    { path: 'scripts/fetch_market_data.py', content: FETCH_MARKET_SCRIPT },
+    { path: 'scripts/live_market_scan.py', content: LIVE_MARKET_SCAN_SCRIPT },
     { path: 'scripts/technical_scan.py', content: TECHNICAL_SCRIPT },
     { path: 'scripts/risk_position.py', content: RISK_SCRIPT },
     { path: 'assets/equity-research-template.md', content: EQUITY_TEMPLATE },
@@ -1135,5 +1166,6 @@ export const STOCK_SKILL: SkillDefinition = {
     { path: 'assets/scenario-sample.json', content: SCENARIO_SAMPLE },
     { path: 'assets/price-sample.csv', content: PRICE_SAMPLE },
     { path: 'assets/valuation-checklist.md', content: WEIGHTED_CHECKLIST },
+    { path: 'assets/daily-market-snapshot.md', content: DAILY_SNAPSHOT_TEMPLATE },
   ],
 };

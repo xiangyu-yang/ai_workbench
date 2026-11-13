@@ -8,6 +8,8 @@ async function main() {
   const force = process.argv.includes('--force');
   const orgArgIndex = process.argv.indexOf('--org');
   const orgArg = orgArgIndex >= 0 ? process.argv[orgArgIndex + 1] : '';
+  const onlyArgIndex = process.argv.indexOf('--only');
+  const only = onlyArgIndex >= 0 ? [process.argv[onlyArgIndex + 1]].filter(Boolean) : [];
   const db = await getDb();
 
   const orgRows = orgArg
@@ -29,7 +31,7 @@ async function main() {
   }
   if (!userId) throw new Error('没有可用的用户');
 
-  const result = await installSkillLibrary(org.id, userId, { force });
+  const result = await installSkillLibrary(org.id, userId, { force, only });
   const bound = await bindSeedSkills(org.id);
   console.log(`[cuter skills] 组织：${org.name} (${org.id})`);
   console.log(`[cuter skills] 新建 ${result.created}，更新 ${result.updated}，跳过 ${result.skipped}，绑定 ${bound}`);
