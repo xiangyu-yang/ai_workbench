@@ -256,6 +256,13 @@ async function executeTask(taskId: string, opts: { resumeMessageId?: string } = 
 
   const controller = new AbortController();
   state.controllers.set(task.id, controller);
+  const heartbeat = setInterval(() => {
+    void db
+      .update(tasks)
+      .set({ lockedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(tasks.id, task.id), eq(tasks.status, 'running')))
+      .catch(() => undefined);
+  }, 60_000);
 
   try {
     const outcome = await runAgent({
@@ -285,6 +292,7 @@ async function executeTask(taskId: string, opts: { resumeMessageId?: string } = 
       .where(eq(tasks.id, task.id));
     await appendTaskEvent(task.orgId, task.id, 'task.failed', { error: message });
   } finally {
+    clearInterval(heartbeat);
     state.controllers.delete(task.id);
   }
 }
