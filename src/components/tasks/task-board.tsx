@@ -50,6 +50,7 @@ type TaskRow = {
 };
 
 type Expert = { id: string; name: string; icon: string; accent: string };
+type Skill = { id: string; name: string; description: string; category: string };
 
 const CRON_PRESETS = [
   { id: '', label: '不定时（立即执行一次）' },
@@ -82,10 +83,12 @@ function StatusIcon({ status }: { status: string }) {
 export function TaskBoard({
   tasks,
   experts,
+  skills,
   canManage,
 }: {
   tasks: TaskRow[];
   experts: Expert[];
+  skills: Skill[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -98,6 +101,7 @@ export function TaskBoard({
     title: '',
     goal: '',
     expertId: experts[0]?.id || '',
+    skillIds: null as string[] | null,
     cron: '0 9 * * *',
   });
 
@@ -131,6 +135,7 @@ export function TaskBoard({
           title: form.title,
           goal: form.goal || form.title,
           expertId: form.expertId || undefined,
+          skillIds: form.skillIds,
           schedule: scheduled
             ? {
                 enabled: true,
@@ -146,7 +151,7 @@ export function TaskBoard({
         variant: 'success',
       });
       setOpen(false);
-      setForm({ title: '', goal: '', expertId: experts[0]?.id || '', cron: '0 9 * * *' });
+      setForm({ title: '', goal: '', expertId: experts[0]?.id || '', skillIds: null, cron: '0 9 * * *' });
       setScheduled(false);
       router.push(`/tasks/${data.id}`);
     } catch (err) {
@@ -328,6 +333,54 @@ export function TaskBoard({
                 </option>
               ))}
             </Select>
+          </Field>
+          <Field label="使用技能" hint="不选则使用专家默认绑定；手动选择最多 3 个">
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setForm((prev) => ({ ...prev, skillIds: null }))}
+                className={
+                  form.skillIds === null
+                    ? 'rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-[11px] text-accent-2'
+                    : 'rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[11px] text-muted transition hover:border-line-strong'
+                }
+              >
+                自动（专家默认）
+              </button>
+              {skills.map((skill) => {
+                const checked = form.skillIds?.includes(skill.id);
+                return (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    title={skill.description}
+                    onClick={() => {
+                      if (form.skillIds === null) {
+                        setForm((prev) => ({ ...prev, skillIds: [skill.id] }));
+                        return;
+                      }
+                      if (checked) {
+                        setForm((prev) => ({
+                          ...prev,
+                          skillIds: (prev.skillIds || []).filter((id) => id !== skill.id),
+                        }));
+                      } else if (form.skillIds.length >= 3) {
+                        toast('最多同时选择 3 个技能', { variant: 'error' });
+                      } else {
+                        setForm((prev) => ({ ...prev, skillIds: [...(prev.skillIds || []), skill.id] }));
+                      }
+                    }}
+                    className={
+                      checked
+                        ? 'rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-[11px] text-accent-2'
+                        : 'rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 text-[11px] text-muted transition hover:border-line-strong'
+                    }
+                  >
+                    {skill.name}
+                  </button>
+                );
+              })}
+            </div>
           </Field>
           <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2.5">
             <div>

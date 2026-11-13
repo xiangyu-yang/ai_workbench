@@ -40,6 +40,7 @@ export type RunParams = {
   resume?: boolean;
   taskId?: string | null;
   depth?: number;
+  skillIds?: string[] | null;
 };
 
 export type RunOutcome = {
@@ -214,6 +215,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   const skillQuery = recentUserRows[0]
     ? textOfParts(recentUserRows[0].parts || [])
     : thread.title;
+  const effectiveSkillIds = params.skillIds !== undefined ? params.skillIds : thread.skillIds;
   const toolset = await buildToolset({
     orgId: params.orgId,
     expert,
@@ -222,6 +224,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     taskId: params.taskId,
     depth: params.depth || 0,
     query: skillQuery,
+    skillIds: effectiveSkillIds,
   });
   const toolMap = new Map(toolset.tools.map((t) => [t.name, t]));
 

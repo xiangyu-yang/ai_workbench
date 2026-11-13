@@ -20,6 +20,7 @@ import {
   Paperclip,
   Pencil,
   Plus,
+  Search,
   ShieldCheck,
   Sparkles,
   Square,
@@ -40,6 +41,7 @@ import type {
   ChatMessage,
   ChatPart,
   ExpertOption,
+  SkillOption,
 } from '@/lib/chat-types';
 import { bytes, cn, modeLabel, relativeTime, truncate } from '@/lib/utils';
 
@@ -79,7 +81,9 @@ type Props = {
   initialArtifacts: ArtifactInfo[];
   initialApprovals: ApprovalInfo[];
   experts: ExpertOption[];
+  skills: SkillOption[];
   initialExpertId: string | null;
+  initialSkillIds: string[] | null;
   initialMode: string;
   demoMode: boolean;
   modelLabel: string;
@@ -94,7 +98,9 @@ export function ChatView({
   initialArtifacts,
   initialApprovals,
   experts,
+  skills,
   initialExpertId,
+  initialSkillIds,
   initialMode,
   demoMode,
   modelLabel,
@@ -113,6 +119,7 @@ export function ChatView({
     initialExpertId || experts[0]?.id || null,
   );
   const [mode, setMode] = React.useState(initialMode || 'agent');
+  const [skillIds, setSkillIds] = React.useState<string[] | null>(initialSkillIds);
   const [title, setTitle] = React.useState(initialTitle);
   const [streaming, setStreaming] = React.useState(
     initialMessages.some((m) => m.status === 'streaming'),
@@ -136,6 +143,10 @@ export function ChatView({
 
   const activeArtifact = artifacts.find((item) => item.id === activeArtifactId) || null;
   const selectedExpert = experts.find((item) => item.id === expertId) || null;
+  const changeExpert = (id: string) => {
+    setExpertId(id);
+    setSkillIds(null);
+  };
 
   const scrollToBottom = React.useCallback((smooth = false) => {
     const el = scrollRef.current;
@@ -440,6 +451,7 @@ export function ChatView({
           threadId: threadIdRef.current || undefined,
           expertId,
           mode,
+          skillIds,
           text: clean,
           attachmentIds: attachments.map((item) => item.id),
         }),
@@ -613,7 +625,10 @@ export function ChatView({
                 <Composer
                   experts={experts}
                   expertId={expertId}
-                  onExpertChange={setExpertId}
+                  onExpertChange={changeExpert}
+                  skills={skills}
+                  skillIds={skillIds}
+                  onSkillsChange={setSkillIds}
                   mode={mode}
                   onModeChange={setMode}
                   streaming={streaming}
@@ -621,7 +636,7 @@ export function ChatView({
                   onStop={stop}
                   demoMode={demoMode}
                   modelLabel={modelLabel}
-                  placeholder="描述一个目标，Cuter 会规划并执行…"
+                  placeholder="输入问题或目标；需要写入文件和调用工具时切换到执行…"
                 />
               </div>
             </div>
@@ -683,7 +698,10 @@ export function ChatView({
                 <Composer
                   experts={experts}
                   expertId={expertId}
-                  onExpertChange={setExpertId}
+                  onExpertChange={changeExpert}
+                  skills={skills}
+                  skillIds={skillIds}
+                  onSkillsChange={setSkillIds}
                   mode={mode}
                   onModeChange={setMode}
                   streaming={streaming}
@@ -911,7 +929,7 @@ function EmptyHero({ onPick }: { onPick: (prompt: string) => void }) {
           今天，想让 Cuter <span className="text-gradient">完成什么？</span>
         </h1>
         <p className="mt-2 max-w-md text-[12.5px] leading-relaxed text-muted">
-          描述目标即可。Cuter 会规划步骤、检索知识、调用工具，并交付可预览、可下载的成果。
+          描述目标即可。默认问答；需要写文件或调用工具时切换到「执行」，敏感操作会先请求审批。
         </p>
       </div>
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -1166,6 +1184,9 @@ function Composer({
   experts,
   expertId,
   onExpertChange,
+  skills,
+  skillIds,
+  onSkillsChange,
   mode,
   onModeChange,
   streaming,
@@ -1178,6 +1199,9 @@ function Composer({
   experts: ExpertOption[];
   expertId: string | null;
   onExpertChange: (id: string) => void;
+  skills: SkillOption[];
+  skillIds: string[] | null;
+  onSkillsChange: (ids: string[] | null) => void;
   mode: string;
   onModeChange: (mode: string) => void;
   streaming: boolean;
@@ -1191,11 +1215,31 @@ function Composer({
   const [text, setText] = React.useState('');
   const [attachments, setAttachments] = React.useState<AttachmentInfo[]>([]);
   const [expertOpen, setExpertOpen] = React.useState(false);
+  const [skillOpen, setSkillOpen] = React.useState(false);
+  const [skillQuery, setSkillQuery] = React.useState('');
   const [dragOver, setDragOver] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const selected = experts.find((item) => item.id === expertId) || null;
+  const selectedSkills = (skillIds || [])
+    .map((id) => skills.find((skill) => skill.id === id))
+    .filter((skill): skill is SkillOption => Boolean(skill));
+  const visibleSkills = skills.filter(
+    (skill) =>
+      !skillQuery ||
+      skill.name.toLowerCase().includes(skillQuery.toLowerCase()) ||
+      skill.description.toLowerCase().includes(skillQuery.toLowerCase()),
+  );
+  const skillLabel =
+    skillIds === null
+      ? '技能 · 自动'
+      : selectedSkills.length === 0
+        ? '技能 · 不使用'
+        : selectedSkills.length === 1
+          ? `技能 · ${selectedSkills[0].name}`
+          : `技能 · ${selectedSkills.length} 个`;
+  const activeMode = MODES.find((item) => item.id === mode);
   const uploading = attachments.some((item) => item.uploading);
 
   React.useEffect(() => {
@@ -1403,6 +1447,130 @@ function Composer({
           ) : null}
         </div>
 
+        <div className="relative">
+          <button
+            type="button"
+            disabled={mode === 'plan'}
+            onClick={() => setSkillOpen((prev) => !prev)}
+            title={mode === 'plan' ? '规划模式只输出计划，不使用技能工具' : '选择本轮使用的技能'}
+            className={cn(
+              'inline-flex h-8 max-w-[170px] items-center gap-1.5 rounded-lg px-2 text-[11.5px] text-muted transition hover:bg-surface-3 hover:text-ink',
+              mode === 'plan' && 'cursor-not-allowed opacity-45',
+            )}
+          >
+            <Wand2 size={13} className="shrink-0 text-faint" />
+            <span className="truncate">{skillLabel}</span>
+            <ChevronDown size={11} className="shrink-0 text-faint" />
+          </button>
+          {skillOpen && mode !== 'plan' ? (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setSkillOpen(false)} />
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-[330px] max-w-[calc(100vw-2rem)] animate-fade-up overflow-hidden rounded-xl border border-line bg-surface p-1.5 shadow-2xl">
+                <div className="flex items-center justify-between px-2.5 pb-1 pt-1.5">
+                  <p className="text-[10px] uppercase tracking-wider text-faint">选择技能</p>
+                  <button
+                    type="button"
+                    onClick={() => onSkillsChange(null)}
+                    className="text-[10px] text-accent-2 hover:underline"
+                  >
+                    恢复自动
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSkillsChange(null);
+                    setSkillOpen(false);
+                  }}
+                  className={cn(
+                    'flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition',
+                    skillIds === null ? 'bg-surface-3' : 'hover:bg-surface-3',
+                  )}
+                >
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-line">
+                    {skillIds === null ? <Check size={10} className="text-accent-2" /> : null}
+                  </span>
+                  <span>
+                    <span className="block text-[12px] font-medium text-ink">自动（跟随专家）</span>
+                    <span className="mt-0.5 block text-[10.5px] text-faint">
+                      使用该专家已绑定的技能，推荐日常使用
+                    </span>
+                  </span>
+                </button>
+                <div className="my-1 h-px bg-line" />
+                <div className="relative px-2">
+                  <Search size={12} className="absolute left-4 top-1/2 -translate-y-1/2 text-faint" />
+                  <input
+                    value={skillQuery}
+                    onChange={(event) => setSkillQuery(event.target.value)}
+                    placeholder="搜索技能…"
+                    className="h-8 w-full rounded-lg border border-line bg-surface-2 pl-7 pr-2 text-[11.5px] text-ink outline-none placeholder:text-faint focus:border-accent/40"
+                  />
+                </div>
+                <div className="mt-1 max-h-[260px] overflow-y-auto scrollbar-thin">
+                  {visibleSkills.map((skill) => {
+                    const checked = (skillIds || []).includes(skill.id);
+                    return (
+                      <button
+                        key={skill.id}
+                        type="button"
+                        onClick={() => {
+                          const current = skillIds || [];
+                          if (checked) {
+                            const next = current.filter((id) => id !== skill.id);
+                            onSkillsChange(next);
+                          } else {
+                            if (current.length >= 3) {
+                              toast('最多同时选择 3 个技能', { variant: 'error' });
+                              return;
+                            }
+                            onSkillsChange([...current, skill.id]);
+                          }
+                        }}
+                        className={cn(
+                          'flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition',
+                          checked ? 'bg-accent/[0.07]' : 'hover:bg-surface-3',
+                        )}
+                      >
+                        <span className={cn(
+                          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                          checked ? 'border-accent/50 bg-accent/15 text-accent-2' : 'border-line',
+                        )}>
+                          {checked ? <Check size={10} /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-[12px] font-medium text-ink">{skill.name}</span>
+                            <Badge variant="outline" className="shrink-0 scale-90">{skill.category}</Badge>
+                          </span>
+                          <span className="mt-0.5 line-clamp-2 block text-[10.5px] leading-relaxed text-faint">
+                            {skill.description}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {!visibleSkills.length ? (
+                    <p className="px-2.5 py-6 text-center text-[11px] text-faint">没有匹配的技能</p>
+                  ) : null}
+                </div>
+                <div className="mt-1 flex items-center justify-between border-t border-line/60 px-2.5 py-1.5">
+                  <span className="text-[10px] text-faint">手动选择会覆盖专家默认技能，最多 3 个</span>
+                  {skillIds && skillIds.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => onSkillsChange([])}
+                      className="text-[10px] text-muted hover:text-danger"
+                    >
+                      清空
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </div>
+
         <div className="mx-0.5 h-4 w-px bg-line" />
 
         <div className="flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5">
@@ -1413,7 +1581,7 @@ function Composer({
               title={item.hint}
               onClick={() => onModeChange(item.id)}
               className={cn(
-                'h-7 rounded-md px-2 text-[10.5px] font-medium transition',
+                'h-7 whitespace-nowrap rounded-md px-2.5 text-[10.5px] font-medium transition',
                 mode === item.id
                   ? 'bg-surface-3 text-ink shadow-sm'
                   : 'text-faint hover:text-muted',
@@ -1424,12 +1592,8 @@ function Composer({
           ))}
         </div>
 
-        <span className="ml-1 hidden items-center gap-1 text-[10px] text-faint sm:flex">
-          {demoMode ? '演示模型' : modelLabel || '默认模型'}
-        </span>
-
         <div className="ml-auto flex items-center gap-1.5">
-          <span className="hidden text-[10px] text-faint md:block">
+          <span className="hidden whitespace-nowrap text-[10px] text-faint 2xl:block">
             Enter 发送 · Shift+Enter 换行
           </span>
           {streaming ? (
@@ -1452,6 +1616,31 @@ function Composer({
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={16} strokeWidth={2.4} />}
             </button>
           )}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-line/40 px-2.5 pb-1.5 pt-1 text-[10px] text-faint">
+          <span className="text-muted">{activeMode?.hint}</span>
+          <span>·</span>
+          <span>
+            {mode === 'plan'
+              ? '技能与工具不参与规划'
+              : skillIds === null
+                ? '技能跟随专家'
+                : selectedSkills.length
+                  ? `手动技能 ${selectedSkills.length} 个 · 覆盖专家默认`
+                  : '手动技能：不使用'}
+          </span>
+          {mode === 'plan' ? (
+            <button
+              type="button"
+              onClick={() => onModeChange('agent')}
+              className="shrink-0 text-accent-2 hover:underline"
+            >
+              切换到执行
+            </button>
+          ) : null}
+          <span className="ml-auto hidden max-w-[180px] truncate text-faint sm:block">
+            {demoMode ? '演示模型' : modelLabel || '默认模型'}
+          </span>
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@ import {
   threads,
 } from '@/server/db/schema';
 import { ChatView } from '@/components/chat/chat-view';
+import { listSelectableSkills } from '@/server/skills/selectable';
 import type { ChatMessage, ChatPart } from '@/lib/chat-types';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +49,7 @@ export default async function ChatThreadPage({
   const thread = threadRows[0];
   if (!thread || thread.userId !== auth.user.id || thread.source !== 'chat') notFound();
 
-  const [messageRows, artifactRows, approvalRows, expertRows, providerRows, appRows] = await Promise.all([
+  const [messageRows, artifactRows, approvalRows, expertRows, providerRows, appRows, skillRows] = await Promise.all([
     db
       .select()
       .from(messages)
@@ -93,6 +94,7 @@ export default async function ChatThreadPage({
           .where(and(eq(apps.orgId, auth.org.id), eq(apps.id, appQuery)))
           .limit(1)
       : Promise.resolve([]),
+    listSelectableSkills(auth.org.id, auth.user.id, auth.role),
   ]);
   const launchedApp = appRows[0] || null;
 
@@ -141,7 +143,16 @@ export default async function ChatThreadPage({
         visibility: item.visibility,
       }))}
       initialExpertId={thread.expertId}
+      initialSkillIds={thread.skillIds ?? null}
       initialMode={thread.mode}
+      skills={skillRows.map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        category: skill.category,
+        icon: skill.icon,
+        version: skill.version,
+      }))}
       demoMode={providerRows.length === 0}
       modelLabel={expert?.modelId || providerRows[0]?.defaultModel || 'Cuter 演示模型'}
     />

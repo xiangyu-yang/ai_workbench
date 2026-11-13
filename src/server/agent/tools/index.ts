@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
 import {
   connectors,
@@ -75,6 +75,44 @@ function selectFullSkillNames(packages: SkillPackageRuntime[], query: string): S
   return new Set(ranked.map((item) => item.name));
 }
 
+async function loadSkillBindings(
+  orgId: string,
+  expert: Expert | null,
+  skillIds: string[] | null | undefined,
+): Promise<Array<{ skill: Skill; version: number }>> {
+  const db = await getDb();
+  if (skillIds !== undefined && skillIds !== null) {
+    if (!skillIds.length) return [];
+    const rows = await db
+      .select()
+      .from(skills)
+      .where(
+        and(
+          eq(skills.orgId, orgId),
+          eq(skills.status, 'published'),
+          inArray(skills.id, skillIds),
+        ),
+      );
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return skillIds
+      .map((id) => byId.get(id))
+      .filter((row): row is Skill => Boolean(row))
+      .map((skill) => ({ skill, version: 0 }));
+  }
+  if (!expert) return [];
+  return db
+    .select({ skill: skills, version: expertSkills.version })
+    .from(expertSkills)
+    .innerJoin(skills, eq(skills.id, expertSkills.skillId))
+    .where(
+      and(
+        eq(expertSkills.orgId, orgId),
+        eq(expertSkills.expertId, expert.id),
+        eq(expertSkills.enabled, true),
+      ),
+    );
+}
+
 export async function buildToolset(params: {
   orgId: string;
   expert: Expert | null;
@@ -83,6 +121,7 @@ export async function buildToolset(params: {
   taskId?: string | null;
   depth?: number;
   query?: string;
+  skillIds?: string[] | null;
 }): Promise<{ tools: RuntimeTool[]; instructions: string[]; hasDelegate: boolean }> {
   const { orgId, expert, mode, kbIds } = params;
   const depth = params.depth || 0;
@@ -97,18 +136,7 @@ export async function buildToolset(params: {
 
   if (mode === 'ask') {
     if (expert) {
-      const db = await getDb();
-      const askBindings = await db
-        .select({ skill: skills, version: expertSkills.version })
-        .from(expertSkills)
-        .innerJoin(skills, eq(skills.id, expertSkills.skillId))
-        .where(
-          and(
-            eq(expertSkills.orgId, orgId),
-            eq(expertSkills.expertId, expert.id),
-            eq(expertSkills.enabled, true),
-          ),
-        );
+      const askBindings = await loadSkillBindings(orgId, expert, params.skillIds);
       const askPackages: SkillPackageRuntime[] = [];
       for (const binding of askBindings) {
         const pkg = await loadSkillRuntimePackage(orgId, binding.skill, binding.version);
@@ -141,20 +169,7 @@ export async function buildToolset(params: {
   // 技能
   if (expert) {
     const db = await getDb();
-    const bindings = await db
-      .select({
-        version: expertSkills.version,
-        skill: skills,
-      })
-      .from(expertSkills)
-      .innerJoin(skills, eq(skills.id, expertSkills.skillId))
-      .where(
-        and(
-          eq(expertSkills.orgId, orgId),
-          eq(expertSkills.expertId, expert.id),
-          eq(expertSkills.enabled, true),
-        ),
-      );
+    const bindings = await loadSkillBindings(orgId, expert, params.skillIds);
 
     let skillIndex = 0;
     const skillPackages: SkillPackageRuntime[] = [];

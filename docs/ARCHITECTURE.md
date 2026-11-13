@@ -122,9 +122,9 @@ orgs ─┬─ memberships ── users ── sessions
       │           │                           └─ skill_files
       │           ├─ expert_knowledge_bases ── knowledge_bases ── documents ── chunks
       │           └─ expert_connectors ── connectors ── connector_tools
-      ├─ threads ── messages ── attachments
+      ├─ threads（skill_ids）── messages ── attachments
       ├─ runs
-      ├─ tasks ─┬─ task_steps
+      ├─ tasks（skill_ids）─┬─ task_steps
       │         ├─ task_events
       │         └─ artifacts
       ├─ approvals
@@ -138,6 +138,7 @@ orgs ─┬─ memberships ── users ── sessions
 
 - **消息用 parts 而非纯文本**：`parts: [{type:'text'|'reasoning'|'tool'|'artifact'|'citation'}]`，天然支持工具卡片、思考过程、交付物与引用回放。
 - **Run 与 Message 分离**：一次用户消息可能触发多次模型调用与审批恢复；Run 记录每次执行的成本、延迟与错误。
+- **技能选择是会话状态**：`threads.skill_ids` / `tasks.skill_ids` 保存自动（null）、不使用（[]）或手动列表；显式列表覆盖专家绑定，恢复与多轮请求保持一致。
 - **任务步骤是数据不是日志**：`task_steps` 由模型通过 `update_plan` 更新，UI 直接渲染进度，避免"假流式"。
 - **技能版本化**：专家绑定 `skill_id + version`（数据层支持精确版本，UI 默认 latest），发布后不可变，保证可复现。
 - **技能包文件化**：`skill_files` 保存 `SKILL.md`、references、scripts、assets；发布快照内嵌文件清单，运行时渐进式加载。
@@ -147,6 +148,16 @@ orgs ─┬─ memberships ── users ── sessions
 ---
 
 ## 5. Agent Runtime
+
+### 5.0 对话模式与选择器
+
+| 模式 | 工具 | 产物 | 适用 |
+| --- | --- | --- | --- |
+| 问答 | 只读工具；不加载脚本执行 | 直接回答 | 事实问答、检索、解释 |
+| 规划 | 不加载工具 | 只输出计划 | 先对齐方案，再人工切换执行 |
+| 执行 | 全量只读 + 写文件 + 任务 + MCP + 技能脚本（审批） | 交付物/任务 | 复杂目标、材料生产 |
+
+对话框底部可选择专家与技能：默认「自动」跟随专家绑定；手动选择最多 3 个技能覆盖默认。选择写入 `threads.skill_ids` / `tasks.skill_ids`，`null` 表示自动、`[]` 表示不使用、数组表示手动。通用新对话默认问答，专家/应用入口使用专家默认模式。
 
 ### 5.1 可替换 Loop
 

@@ -122,7 +122,7 @@ GET /api/tasks/{taskId}
 | --- | --- | --- |
 | POST | `/api/auth/register` | 注册（可带邀请码） |
 | POST | `/api/auth/login` | 登录 |
-| POST | `/api/chat` | SSE 流式对话 |
+| POST | `/api/chat` | SSE 流式对话；body 支持 `expertId`、`mode`、`skillIds`（null=自动 / []=不使用 / 列表=手动） |
 | POST | `/api/chat/resume` | 审批后恢复 |
 | PATCH | `/api/approvals/{id}` | 批准 / 拒绝 |
 | GET/PATCH/DELETE | `/api/threads[/{id}]` | 会话 |
@@ -140,7 +140,7 @@ GET /api/tasks/{taskId}
 | GET/POST | `/api/knowledge` | 知识库 |
 | POST | `/api/knowledge/{id}/documents` | 上传并入库（multipart） |
 | POST | `/api/knowledge/{id}/search` | 召回测试 |
-| GET/POST | `/api/tasks` | 任务 |
+| GET/POST | `/api/tasks` | 任务；创建时支持 `expertId` 与 `skillIds` |
 | GET/POST | `/api/apps` | 应用中心 |
 | POST | `/api/apps/{id}/open` | 记录最近使用并返回入口 |
 | GET/PATCH/DELETE | `/api/apps/{id}` | 应用详情 / 更新 / 删除 |

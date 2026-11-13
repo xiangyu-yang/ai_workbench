@@ -15,6 +15,13 @@
       "when": 1794388078590,
       "tag": "0001_skill_files_apps",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794543000000,
+      "tag": "0002_thread_task_skill_ids",
+      "breakpoints": true
     }
   ]
 }

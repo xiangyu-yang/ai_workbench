@@ -3,6 +3,7 @@ import { requirePageAuth } from '@/server/auth/session';
 import { getDb } from '@/server/db/client';
 import { apps, experts, modelProviders } from '@/server/db/schema';
 import { ChatView } from '@/components/chat/chat-view';
+import { listSelectableSkills } from '@/server/skills/selectable';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '对话' };
@@ -15,7 +16,7 @@ export default async function NewChatPage({
   const auth = await requirePageAuth();
   const params = await searchParams;
   const db = await getDb();
-  const [expertRows, providerRows, appRows] = await Promise.all([
+  const [expertRows, providerRows, appRows, skillRows] = await Promise.all([
     db
       .select()
       .from(experts)
@@ -33,6 +34,7 @@ export default async function NewChatPage({
           .where(and(eq(apps.orgId, auth.org.id), eq(apps.id, params.app), eq(apps.enabled, true)))
           .limit(1)
       : Promise.resolve([]),
+    listSelectableSkills(auth.org.id, auth.user.id, auth.role),
   ]);
 
   const launchedApp = appRows[0] || null;
@@ -46,6 +48,7 @@ export default async function NewChatPage({
   const defaultExpert = expertRows.find((expert) => expert.id === defaultExpertId);
   const modelLabel =
     defaultExpert?.modelId || providerRows[0]?.defaultModel || 'Cuter 演示模型';
+  const requestedExpert = Boolean(params.expert || launchedApp?.expertId);
 
   return (
     <ChatView
@@ -68,7 +71,16 @@ export default async function NewChatPage({
         visibility: expert.visibility,
       }))}
       initialExpertId={defaultExpertId}
-      initialMode={defaultExpert?.defaultMode || 'agent'}
+      initialSkillIds={null}
+      initialMode={requestedExpert ? defaultExpert?.defaultMode || 'agent' : 'ask'}
+      skills={skillRows.map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        category: skill.category,
+        icon: skill.icon,
+        version: skill.version,
+      }))}
       demoMode={providerRows.length === 0}
       modelLabel={modelLabel}
       appLabel={launchedApp?.name}

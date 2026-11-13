@@ -3,6 +3,7 @@ import { requirePageAuth } from '@/server/auth/session';
 import { getDb } from '@/server/db/client';
 import { experts, tasks } from '@/server/db/schema';
 import { TaskBoard } from '@/components/tasks/task-board';
+import { listSelectableSkills } from '@/server/skills/selectable';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '任务' };
@@ -10,7 +11,7 @@ export const metadata = { title: '任务' };
 export default async function TasksPage() {
   const auth = await requirePageAuth();
   const db = await getDb();
-  const [rows, expertRows] = await Promise.all([
+  const [rows, expertRows, skillRows] = await Promise.all([
     db
       .select({ task: tasks, expertName: experts.name })
       .from(tasks)
@@ -28,12 +29,14 @@ export default async function TasksPage() {
       .from(experts)
       .where(eq(experts.orgId, auth.org.id))
       .orderBy(asc(experts.createdAt)),
+    listSelectableSkills(auth.org.id, auth.user.id, auth.role),
   ]);
 
   return (
     <TaskBoard
       canManage={auth.role !== 'viewer'}
       experts={expertRows}
+      skills={skillRows.map((skill) => ({ id: skill.id, name: skill.name, description: skill.description, category: skill.category }))}
       tasks={rows.map(({ task, expertName }) => ({
         id: task.id,
         title: task.title,

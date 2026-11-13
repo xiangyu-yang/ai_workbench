@@ -12,6 +12,7 @@ import { ApiError, requireApi, assertSameOrigin, errorResponse, readJson, sseRes
 import { newId } from '@/server/ids';
 import { runAgent } from '@/server/agent/runtime';
 import { assertQuota } from '@/server/usage';
+import { assertSelectableSkills } from '@/server/skills/selectable';
 
 const Body = z.object({
   threadId: z.string().optional(),
@@ -19,6 +20,7 @@ const Body = z.object({
   mode: z.enum(['ask', 'plan', 'agent']).default('agent'),
   text: z.string().max(50_000).default(''),
   attachmentIds: z.array(z.string()).max(6).optional(),
+  skillIds: z.array(z.string()).max(5).nullable().optional(),
 });
 
 export async function POST(req: Request) {
@@ -59,6 +61,13 @@ export async function POST(req: Request) {
       if (!owned.length) throw new ApiError(400, '专家不存在或不属于当前组织');
     }
 
+    let skillIds: string[] | null = null;
+    if (body.skillIds !== undefined) {
+      skillIds = (await assertSelectableSkills(auth.org.id, auth.user.id, auth.role, body.skillIds)) ?? null;
+    } else if (thread) {
+      skillIds = thread.skillIds ?? null;
+    }
+
     let expertId: string | null = thread?.expertId || null;
     if (body.expertId !== undefined) expertId = body.expertId;
     if (expertId === undefined) expertId = null;
@@ -96,6 +105,7 @@ export async function POST(req: Request) {
         expertId,
         title,
         mode: body.mode,
+        skillIds,
         source: 'chat',
       });
     } else {
@@ -104,6 +114,7 @@ export async function POST(req: Request) {
         .set({
           expertId,
           mode: body.mode,
+          skillIds,
           title: thread.title === '新对话' ? title : thread.title,
           updatedAt: new Date(),
         })
@@ -160,6 +171,7 @@ export async function POST(req: Request) {
         threadId: threadId as string,
         messageId: assistantId,
         mode: body.mode,
+        skillIds,
         signal,
         emit: (event) => send(event.type, event),
       });

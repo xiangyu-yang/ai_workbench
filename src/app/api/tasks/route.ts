@@ -6,6 +6,7 @@ import { newId } from '@/server/ids';
 import { nextCronTime, validateCron } from '@/server/tasks/cron';
 import { appendTaskEvent } from '@/server/tasks/events';
 import { enqueueTask } from '@/server/tasks/runner';
+import { assertSelectableSkills } from '@/server/skills/selectable';
 import { audit } from '@/server/audit';
 import {
   ApiError,
@@ -26,6 +27,7 @@ const Body = z.object({
   title: z.string().trim().min(1).max(120),
   goal: z.string().trim().max(20_000).default(''),
   expertId: z.string().optional(),
+  skillIds: z.array(z.string()).max(5).nullable().optional(),
   schedule: ScheduleInput.optional(),
 });
 
@@ -89,6 +91,11 @@ export async function POST(req: Request) {
       expertId = rows[0]?.id || null;
     }
 
+    const skillIds =
+      input.skillIds === undefined
+        ? null
+        : ((await assertSelectableSkills(auth.org.id, auth.user.id, auth.role, input.skillIds)) ?? null);
+
     let schedule = { enabled: false } as {
       enabled: boolean;
       cron?: string;
@@ -120,6 +127,7 @@ export async function POST(req: Request) {
       title: input.title,
       goal: input.goal || input.title,
       expertId,
+      skillIds,
       mode: 'agent',
       status: 'queued',
       schedule,
