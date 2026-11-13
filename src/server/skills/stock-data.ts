@@ -11,10 +11,10 @@ export const FETCH_MARKET_SCRIPT = String.raw`#!/usr/bin/env python3
 """拉取 A 股 / 港股 / 美股日线行情与实时快照，输出统一 JSON/CSV。
 
 示例：
-  python3 fetch_market_data.py --symbol 600941 --days 250
-  python3 fetch_market_data.py --symbol 00700.HK --days 120 --format csv
-  python3 fetch_market_data.py --symbol AAPL --days 120 --format json
-  python3 fetch_fundamentals.py --symbol 000858 --periods 8 --format markdown
+  python3 fetch_market_data.py --symbol 标的代码或名称 --days 250
+  python3 fetch_market_data.py --symbol 港股代码 --days 120 --format csv
+  python3 fetch_market_data.py --symbol 美股代码 --days 120 --format json
+  python3 fetch_fundamentals.py --symbol 标的代码或名称 --periods 8 --format markdown
 
 数据源：腾讯行情公开接口；A 股失败时回退东方财富公开 K 线接口。
 """
@@ -32,7 +32,7 @@ UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--symbol', required=True, help='如 600941 / 600941.SH / 00700.HK / AAPL')
+    parser.add_argument('--symbol', required=True, help='如 标的代码或名称 / 港股代码 / 美股代码')
     parser.add_argument('--days', type=int, default=250)
     parser.add_argument('--format', choices=['json', 'csv'], default='json')
     parser.add_argument('--output', default='')
@@ -56,12 +56,26 @@ def http_json(url):
     return json.loads(http_text(url))
 
 
+def resolve_by_name(name):
+    query = urllib.parse.quote(str(name).strip())
+    data = http_json('https://searchapi.eastmoney.com/api/suggest/get?input=' + query + '&type=14')
+    rows = ((data.get('QuotationCodeTable') or {}).get('Data') or [])
+    if not rows:
+        raise ValueError('未找到该名称对应的证券：' + str(name))
+    exact = [row for row in rows if str(row.get('Name') or '') == str(name).strip()]
+    row = (exact or rows)[0]
+    code = str(row.get('Code') or '').strip()
+    if not code:
+        raise ValueError('名称解析没有返回代码：' + str(name))
+    return normalize_symbol(code)
+
+
 def normalize_symbol(raw):
     s = str(raw or '').strip().upper().replace(' ', '')
     if not s:
         raise ValueError('股票代码不能为空')
 
-    # A 股：600941.SH / SH600941 / 600941
+    # A 股：代码或 .SH/.SZ/.BJ 后缀 / 带市场前缀
     if s.endswith(('.SH', '.SZ', '.BJ')):
         code, suffix = s[:-3], s[-2:]
         prefix = {'SH': 'sh', 'SZ': 'sz', 'BJ': 'bj'}[suffix]
@@ -101,11 +115,11 @@ def normalize_symbol(raw):
             'currency': 'CNY',
         }
 
-    # 港股：00700.HK / HK00700 / 0700
+    # 港股：港股代码 / HK00700 / 0700
     if s.endswith('.HK') or s.startswith('HK'):
         raw_code = s.replace('.HK', '').replace('HK', '')
         if not re.fullmatch(r'\d{4,5}', raw_code):
-            raise ValueError('港股代码格式应为 00700.HK')
+            raise ValueError('港股代码格式应为 港股代码')
         code = raw_code.zfill(5)
         return {
             'input': raw,
@@ -126,10 +140,10 @@ def normalize_symbol(raw):
             'currency': 'HKD',
         }
 
-    # 美股：AAPL / AAPL.US / US.AAPL
+    # 美股：美股代码 / 美股代码.US / US.美股代码
     ticker = s.replace('.US', '').replace('US.', '')
     if not re.fullmatch(r'[A-Z][A-Z0-9.\-]{0,11}', ticker):
-        raise ValueError('无法识别的股票代码：' + raw)
+        return resolve_by_name(str(raw).strip())
     return {
         'input': raw,
         'market': 'us',
@@ -361,8 +375,8 @@ export const LIVE_MARKET_SCAN_SCRIPT = String.raw`#!/usr/bin/env python3
 """实时行情 + 量价诊断：拉取日线，计算放量/缩量、量价背离、OBV、MFI、VWAP 与技术指标。
 
 示例：
-  python3 live_market_scan.py --symbol 600941 --days 250 --format markdown
-  python3 live_market_scan.py --symbol AAPL --days 120 --format json
+  python3 live_market_scan.py --symbol 标的代码或名称 --days 250 --format markdown
+  python3 live_market_scan.py --symbol 美股代码 --days 120 --format json
 """
 import argparse
 import json
@@ -754,8 +768,8 @@ export const FUNDAMENTALS_SCRIPT = String.raw`#!/usr/bin/env python3
 """A 股结构化基本面快照（东方财富 F10 公开接口）。
 
 示例：
-  python3 fetch_fundamentals.py --symbol 000858 --periods 8
-  python3 fetch_fundamentals.py --symbol 600941 --format markdown
+  python3 fetch_fundamentals.py --symbol 标的代码或名称 --periods 8
+  python3 fetch_fundamentals.py --symbol 标的代码或名称 --format markdown
 """
 import argparse
 import datetime as dt
@@ -925,9 +939,9 @@ export const MARKET_DATA_REFERENCE = `# 行情数据源与口径
 ## 首选来源
 
 - **腾讯行情公开接口**
-  - 实时快照：\`https://qt.gtimg.cn/q=sh600941\`
-  - 日线：\`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh600941,day,,,250,qfq\`
-  - 支持 A 股、港股、美股；美股 K 线需要交易所后缀（如 \`usAAPL.OQ\`）。
+  - 实时快照：\`https://qt.gtimg.cn/q=sh标的代码\`
+  - 日线：\`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh标的代码,day,,,250,qfq\`
+  - 支持 A 股、港股、美股；美股 K 线需要交易所后缀（如 \`us美股代码.OQ\`）。
 - **东方财富公开 K 线接口**（A 股回退）
   - \`push2his.eastmoney.com/api/qt/stock/kline/get\`，含成交额与换手率字段。
 
@@ -935,11 +949,11 @@ export const MARKET_DATA_REFERENCE = `# 行情数据源与口径
 
 | 市场 | 示例 | 脚本内部 |
 | --- | --- | --- |
-| A 股 | \`600941\` / \`600941.SH\` | \`sh600941\` |
+| A 股 | \`标的代码\` / \`标的代码.SH\` | \`sh标的代码\` |
 | 深市 | \`000001\` / \`000001.SZ\` | \`sz000001\` |
 | 北交所 | \`430047.BJ\` | \`bj430047\` |
-| 港股 | \`00700.HK\` | \`hk00700\` |
-| 美股 | \`AAPL\` / \`AAPL.US\` | \`usAAPL\`，K 线用 \`usAAPL.OQ\` |
+| 港股 | \`港股代码\` | \`hk00700\` |
+| 美股 | \`美股代码\` / \`美股代码.US\` | \`us美股代码\`，K 线用 \`us美股代码.OQ\` |
 
 ## 口径与限制
 
