@@ -29,6 +29,18 @@ import {
 
 export type AgentMode = 'ask' | 'plan' | 'agent' | 'task';
 
+export type LoadedSkill = {
+  id: string;
+  name: string;
+  version: number;
+  selection: 'auto' | 'manual';
+  fileCount: number;
+  referenceCount: number;
+  scriptCount: number;
+  description?: string;
+  full: boolean;
+};
+
 function safeName(input: string, fallback: string): string {
   const name = input
     .toLowerCase()
@@ -122,13 +134,20 @@ export async function buildToolset(params: {
   depth?: number;
   query?: string;
   skillIds?: string[] | null;
-}): Promise<{ tools: RuntimeTool[]; instructions: string[]; hasDelegate: boolean }> {
+}): Promise<{
+  tools: RuntimeTool[];
+  instructions: string[];
+  hasDelegate: boolean;
+  skills: LoadedSkill[];
+}> {
   const { orgId, expert, mode, kbIds } = params;
+  const manualSelection = params.skillIds !== undefined && params.skillIds !== null;
   const depth = params.depth || 0;
   const instructions: string[] = [];
   const tools: RuntimeTool[] = [];
+  const loadedSkills: LoadedSkill[] = [];
 
-  if (mode === 'plan') return { tools, instructions, hasDelegate: false };
+  if (mode === 'plan') return { tools, instructions, hasDelegate: false, skills: [] };
 
   const readonlyTools: RuntimeTool[] = [readUrlTool, calculatorTool];
   if (kbIds.length) readonlyTools.unshift(knowledgeSearchTool);
@@ -138,21 +157,53 @@ export async function buildToolset(params: {
     if (expert) {
       const askBindings = await loadSkillBindings(orgId, expert, params.skillIds);
       const askPackages: SkillPackageRuntime[] = [];
+      const askSkills: LoadedSkill[] = [];
       for (const binding of askBindings) {
         const pkg = await loadSkillRuntimePackage(orgId, binding.skill, binding.version);
         if (pkg) {
           askPackages.push(pkg);
+          askSkills.push({
+            id: pkg.id,
+            name: pkg.name,
+            version: binding.version > 0 ? binding.version : binding.skill.version,
+            selection: manualSelection ? 'manual' : 'auto',
+            fileCount: pkg.files.length,
+            referenceCount: pkg.references.length,
+            scriptCount: pkg.scripts.length,
+            description: String(pkg.frontmatter.description || binding.skill.description || ''),
+            full: true,
+          });
         } else if (binding.skill.instructions?.trim()) {
           instructions.push(`### 技能：${binding.skill.name}\n${binding.skill.instructions.trim()}`);
+          askSkills.push({
+            id: binding.skill.id,
+            name: binding.skill.name,
+            version: binding.skill.version,
+            selection: manualSelection ? 'manual' : 'auto',
+            fileCount: 0,
+            referenceCount: 0,
+            scriptCount: 0,
+            description: binding.skill.description,
+            full: false,
+          });
         }
       }
       const askFull = selectFullSkillNames(askPackages, params.query || '');
+      for (const skill of askSkills) {
+        skill.full = askFull.has(skill.name);
+      }
       for (const pkg of askPackages) {
         instructions.push(skillPromptBlock(pkg, askFull.has(pkg.name)));
       }
       readonlyTools.push(...buildSkillPackageTools(askPackages, { allowScripts: false }));
+      return {
+        tools: dedupe([...readonlyTools]),
+        instructions,
+        hasDelegate: false,
+        skills: [...new Map(askSkills.map((skill) => [skill.id, skill])).values()],
+      };
     }
-    return { tools: dedupe([...readonlyTools]), instructions, hasDelegate: false };
+    return { tools: dedupe([...readonlyTools]), instructions, hasDelegate: false, skills: [] };
   }
 
   tools.push(...readonlyTools);
@@ -211,8 +262,30 @@ export async function buildToolset(params: {
       const pkg = await loadSkillRuntimePackage(orgId, binding.skill, binding.version);
       if (pkg) {
         skillPackages.push(pkg);
+        loadedSkills.push({
+          id: pkg.id,
+          name: pkg.name,
+          version: binding.version > 0 ? binding.version : binding.skill.version,
+          selection: manualSelection ? 'manual' : 'auto',
+          fileCount: pkg.files.length,
+          referenceCount: pkg.references.length,
+          scriptCount: pkg.scripts.length,
+          description: String(pkg.frontmatter.description || binding.skill.description || ''),
+          full: true,
+        });
       } else if (record.instructions?.trim()) {
         instructions.push(`### 技能：${record.name}\n${record.instructions.trim()}`);
+        loadedSkills.push({
+          id: binding.skill.id,
+          name: record.name,
+          version: binding.version > 0 ? binding.version : binding.skill.version,
+          selection: manualSelection ? 'manual' : 'auto',
+          fileCount: 0,
+          referenceCount: 0,
+          scriptCount: 0,
+          description: binding.skill.description,
+          full: false,
+        });
       }
       if (record.type === 'http' && record.manifest?.tools?.length) {
         tools.push(
@@ -230,6 +303,9 @@ export async function buildToolset(params: {
     }
 
     const fullSkills = selectFullSkillNames(skillPackages, params.query || '');
+    for (const skill of loadedSkills) {
+      skill.full = fullSkills.has(skill.name);
+    }
     for (const pkg of skillPackages) {
       instructions.push(skillPromptBlock(pkg, fullSkills.has(pkg.name)));
     }
@@ -332,5 +408,10 @@ export async function buildToolset(params: {
     }
   }
 
-  return { tools: dedupe(tools), instructions, hasDelegate };
+  return {
+    tools: dedupe(tools),
+    instructions,
+    hasDelegate,
+    skills: [...new Map(loadedSkills.map((skill) => [skill.id, skill])).values()],
+  };
 }

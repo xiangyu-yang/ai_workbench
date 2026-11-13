@@ -164,6 +164,7 @@ GET /api/tasks/{taskId}
 | `meta` | `{runId, messageId, threadId}` |
 | `text` | `{delta}` |
 | `reasoning` | `{delta}` |
+| `skill` | `{part:{id,name,version,selection,fileCount,...}}` 本轮加载的技能 |
 | `tool_start` | `{id, name}` |
 | `tool_result` | `{id, name, status, summary, output?, durationMs?, approvalId?}` |
 | `approval` | `{approval:{id, toolName, toolArgs, risk, messageId, taskId?}}` |

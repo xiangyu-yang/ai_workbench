@@ -74,6 +74,17 @@ export type AttachmentPart = {
   size: number;
   kind: 'image' | 'file';
 };
+export type SkillPart = {
+  type: 'skill';
+  id: string;
+  name: string;
+  version: number;
+  selection: 'auto' | 'manual';
+  fileCount?: number;
+  referenceCount?: number;
+  scriptCount?: number;
+  description?: string;
+};
 
 export type MessagePart =
   | TextPart
@@ -81,7 +92,8 @@ export type MessagePart =
   | ToolPart
   | CitationPart
   | ArtifactPart
-  | AttachmentPart;
+  | AttachmentPart
+  | SkillPart;
 
 export type MessageStatus =
   | 'streaming'

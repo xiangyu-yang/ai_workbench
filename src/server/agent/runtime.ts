@@ -10,6 +10,7 @@ import {
   type Expert,
   type MessagePart,
   type MessageStatus,
+  type SkillPart,
   type ReasoningPart,
   type TextPart,
   type ToolPart,
@@ -226,6 +227,25 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     query: skillQuery,
     skillIds: effectiveSkillIds,
   });
+  const existingSkillIds = new Set(
+    parts.filter((part): part is SkillPart => part.type === 'skill').map((part) => part.id),
+  );
+  for (const skill of toolset.skills.filter((item) => item.full || item.selection === 'manual')) {
+    if (existingSkillIds.has(skill.id)) continue;
+    const part: SkillPart = {
+      type: 'skill',
+      id: skill.id,
+      name: skill.name,
+      version: skill.version,
+      selection: skill.selection,
+      fileCount: skill.fileCount,
+      referenceCount: skill.referenceCount,
+      scriptCount: skill.scriptCount,
+      description: skill.description,
+    };
+    parts.push(part);
+    send({ type: 'skill', part });
+  }
   const toolMap = new Map(toolset.tools.map((t) => [t.name, t]));
 
   let llmMessages: LlmMessage[] = [];

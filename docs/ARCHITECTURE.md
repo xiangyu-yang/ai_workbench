@@ -209,6 +209,7 @@ while (step < maxSteps) {
 ### 6.2 技能（Skill Package）
 - **标准结构**：`SKILL.md`（YAML frontmatter：name/description/version/license/allowed-tools）+ `references/` + `scripts/` + `assets/`。
 - **渐进式披露**：运行时只注入 SKILL.md 正文与文件索引；细节通过只读 `skill_read_file` 按需读取，避免一次性占满上下文。
+- **可观测性**：消息新增 `skill` part，记录本次加载的技能、版本、自动/手动来源与文件数；界面在回答上方展示，显式调用 `skill_read_file`/`run_skill_script` 时标记“已使用”。
 - **脚本执行**：`run_skill_script` 在 `DATA_DIR/skill-runs/{org}/{skill}/{version}` 隔离目录执行，支持 Node/Python/Bash，30s 超时、输出截断、强制人工审批；`SKILL_ALLOW_SCRIPTS=false` 可整体关闭。
 - **发布**：校验 SKILL.md/frontmatter/文件类型与大小 → 生成不可变快照（含全部文件）→ 版本自增；专家按版本绑定。
 - **HTTP Tool Skill**：同一包内通过 manifest 声明 JSON Schema 工具 + 请求模板，支持 `{{param}}` 与 `{{env.VAR}}`。

@@ -35,12 +35,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const row = rows[0];
     if (!row) throw new ApiError(404, '任务不存在');
 
-    const [steps, events, artifactRows, approvalRows] = await Promise.all([
+    const [stepRows, events, artifactRows, approvalRows] = await Promise.all([
       db.select().from(taskSteps).where(eq(taskSteps.taskId, id)).orderBy(asc(taskSteps.ordinal)),
       db.select().from(taskEvents).where(eq(taskEvents.taskId, id)).orderBy(asc(taskEvents.seq)),
       db.select().from(artifacts).where(eq(artifacts.taskId, id)),
       db.select().from(approvals).where(eq(approvals.taskId, id)).orderBy(asc(approvals.createdAt)),
     ]);
+
+    let steps = stepRows;
+    if (row.task.status === 'completed' && steps.some((step) => step.status !== 'done')) {
+      const now = new Date();
+      await db
+        .update(taskSteps)
+        .set({ status: 'done', updatedAt: now })
+        .where(eq(taskSteps.taskId, id));
+      steps = steps.map((step) => ({ ...step, status: 'done' as const, updatedAt: now }));
+    }
 
     let msgs: Array<typeof messages.$inferSelect> = [];
     if (row.task.threadId) {

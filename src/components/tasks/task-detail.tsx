@@ -23,6 +23,7 @@ import { ExpertAvatar } from '@/components/brand';
 import { Badge, Button, Card, ErrorBox, Modal, Progress, Spinner } from '@/components/ui';
 import { Markdown } from '@/components/chat/markdown';
 import { ToolCard } from '@/components/chat/tool-card';
+import { SkillStrip } from '@/components/chat/skill-strip';
 import { ArtifactPanel } from '@/components/chat/artifact-panel';
 import { useToast } from '@/components/toast';
 import type { ArtifactInfo, ChatPart } from '@/lib/chat-types';
@@ -183,6 +184,15 @@ export function TaskDetail({ initial }: { initial: Data }) {
   const toolParts = (assistant?.parts || []).filter(
     (part): part is Extract<ChatPart, { type: 'tool' }> => part.type === 'tool',
   );
+  const skillParts = (assistant?.parts || []).filter(
+    (part): part is Extract<ChatPart, { type: 'skill' }> => part.type === 'skill',
+  );
+  const usedSkills = new Set(
+    toolParts
+      .filter((part) => part.name === 'skill_read_file' || part.name === 'run_skill_script')
+      .map((part) => String((part.args as Record<string, unknown> | undefined)?.skill || ''))
+      .filter(Boolean),
+  );
   const textParts = (assistant?.parts || []).filter(
     (part): part is Extract<ChatPart, { type: 'text' }> => part.type === 'text',
   );
@@ -313,6 +323,12 @@ export function TaskDetail({ initial }: { initial: Data }) {
                 {data.task.goal}
               </p>
             </Card>
+
+            {skillParts.length ? (
+              <div className="rounded-xl border border-line/70 bg-surface-2/40 px-3.5 py-3">
+                <SkillStrip parts={skillParts} used={usedSkills} />
+              </div>
+            ) : null}
 
             {toolParts.length ? (
               <div>

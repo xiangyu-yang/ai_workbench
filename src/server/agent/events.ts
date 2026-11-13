@@ -1,9 +1,10 @@
-import type { CitationPart, MessagePart, MessageStatus } from '@/server/db/schema';
+import type { CitationPart, MessagePart, MessageStatus, SkillPart } from '@/server/db/schema';
 
 export type RuntimeEvent =
   | { type: 'meta'; runId: string; messageId: string; threadId?: string; taskId?: string }
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
+  | { type: 'skill'; part: SkillPart }
   | { type: 'tool_start'; id: string; name: string; title?: string }
   | {
       type: 'tool_result';

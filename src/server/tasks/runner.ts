@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNotNull, lt, lte, sql } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
-import { messages, tasks, threads, type Task } from '@/server/db/schema';
+import { messages, taskSteps, tasks, threads, type Task } from '@/server/db/schema';
 import { newId } from '@/server/ids';
 import { env } from '@/server/env';
 import { runAgent, type RunOutcome } from '@/server/agent/runtime';
@@ -166,6 +166,11 @@ async function finalizeTask(task: Task, outcome: RunOutcome): Promise<void> {
         updatedAt: now,
       })
       .where(eq(tasks.id, task.id));
+    // complete_task 已提前落库时，仍要确保计划步骤全部收敛，避免完成后显示 0/N。
+    await db
+      .update(taskSteps)
+      .set({ status: 'done', updatedAt: now })
+      .where(eq(taskSteps.taskId, task.id));
     return;
   }
 
@@ -190,7 +195,6 @@ async function finalizeTask(task: Task, outcome: RunOutcome): Promise<void> {
     .where(eq(tasks.id, task.id));
 
   if (status === 'completed') {
-    const { taskSteps } = await import('@/server/db/schema');
     await db
       .update(taskSteps)
       .set({ status: 'done', updatedAt: now })

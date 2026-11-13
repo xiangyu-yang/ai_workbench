@@ -32,6 +32,7 @@ import { ExpertAvatar, Logo } from '@/components/brand';
 import { Badge, Button, ErrorBox, Modal, Progress, Spinner } from '@/components/ui';
 import { Markdown } from './markdown';
 import { ToolCard } from './tool-card';
+import { SkillStrip } from './skill-strip';
 import { ArtifactPanel } from './artifact-panel';
 import { useToast } from '@/components/toast';
 import type {
@@ -230,6 +231,16 @@ export function ChatView({
           case 'reasoning':
             appendDelta('reasoning', String(payload.delta || ''));
             break;
+          case 'skill': {
+            const part = payload.part as Extract<ChatPart, { type: 'skill' }>;
+            patchAssistant((message) => {
+              if (!part?.id || message.parts.some((item) => item.type === 'skill' && item.id === part.id)) {
+                return message;
+              }
+              return { ...message, parts: [...message.parts, part] };
+            });
+            break;
+          }
           case 'tool_start': {
             const id = String(payload.id);
             const name = String(payload.name);
@@ -990,6 +1001,18 @@ function MessageItem({
   const reasoning = message.parts.filter(
     (part): part is Extract<ChatPart, { type: 'reasoning' }> => part.type === 'reasoning',
   );
+  const skills = message.parts.filter(
+    (part): part is Extract<ChatPart, { type: 'skill' }> => part.type === 'skill',
+  );
+  const usedSkills = new Set(
+    message.parts
+      .filter(
+        (part): part is Extract<ChatPart, { type: 'tool' }> =>
+          part.type === 'tool' && (part.name === 'skill_read_file' || part.name === 'run_skill_script'),
+      )
+      .map((part) => String((part.args as Record<string, unknown> | undefined)?.skill || ''))
+      .filter(Boolean),
+  );
   const hasVisibleContent = message.parts.some(
     (part) => part.type === 'text' || part.type === 'tool' || part.type === 'artifact',
   );
@@ -1090,6 +1113,7 @@ function MessageItem({
       </div>
 
       <div className="space-y-3 pl-0 sm:pl-8">
+        {skills.length ? <SkillStrip parts={skills} used={usedSkills} /> : null}
         {reasoning.length ? (
           <details className="group/reason overflow-hidden rounded-xl border border-line/80 bg-surface-2">
             <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[11.5px] text-muted [&::-webkit-details-marker]:hidden">
