@@ -10,7 +10,7 @@ import {
 } from '@/server/db/schema';
 import { ApiError, requireApi, assertSameOrigin, errorResponse, readJson, sseResponse, rateLimit } from '@/server/http';
 import { newId } from '@/server/ids';
-import { runAgent } from '@/server/agent/runtime';
+import { startAgentRun } from '@/server/agent/run-manager';
 import { assertQuota } from '@/server/usage';
 import { assertSelectableSkills } from '@/server/skills/selectable';
 
@@ -163,18 +163,17 @@ export async function POST(req: Request) {
       status: 'streaming',
     });
 
-    const signal = req.signal;
     return sseResponse(async (send) => {
-      await runAgent({
+      const run = startAgentRun({
         orgId: auth.org.id,
         userId: auth.user.id,
         threadId: threadId as string,
         messageId: assistantId,
         mode: body.mode,
         skillIds,
-        signal,
         emit: (event) => send(event.type, event),
       });
+      await run.promise;
     });
   } catch (err) {
     return errorResponse(err);

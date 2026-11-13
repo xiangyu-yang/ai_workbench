@@ -10,7 +10,7 @@ import {
   requireApi,
   sseResponse,
 } from '@/server/http';
-import { runAgent } from '@/server/agent/runtime';
+import { isAgentRunActive, startAgentRun } from '@/server/agent/run-manager';
 
 const Body = z.object({ messageId: z.string() });
 
@@ -33,17 +33,21 @@ export async function POST(req: Request) {
       throw new ApiError(409, '该消息当前无需恢复', 'not_resumable');
     }
 
+    if (isAgentRunActive(messageId)) {
+      throw new ApiError(409, '消息正在生成，请等待当前输出完成', 'run_active');
+    }
+
     return sseResponse(async (send) => {
-      await runAgent({
+      const run = startAgentRun({
         orgId: auth.org.id,
         userId: auth.user.id,
         threadId: row.thread.id,
         messageId,
         mode: row.thread.mode as 'ask' | 'plan' | 'agent',
-        signal: req.signal,
         resume: true,
         emit: (event) => send(event.type, event),
       });
+      await run.promise;
     });
   } catch (err) {
     return errorResponse(err);

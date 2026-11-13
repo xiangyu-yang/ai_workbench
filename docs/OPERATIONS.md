@@ -44,6 +44,7 @@ npm run db:seed
 - Web 无状态，可水平扩展；SSE 要求入口关闭响应缓冲（Nginx `proxy_buffering off`，超时 ≥ 600s）。
 - 生产将 `INPROCESS_WORKER=false`，由 Worker 消费任务；任务通过数据库状态机（`queued → planning → running → …`）与条件更新抢占，避免重复执行。
 - 调度器每 30s 检查到期定时任务；多 Worker 同时运行是安全的（条件更新）。
+- 对话生成由进程内 Run Manager 托管；单实例内 SSE 断开不会取消。多副本部署时 `stop` 只能命中同一实例，需通过网关粘性会话或后续增加数据库取消标记。
 - 单机 PGlite 模式下调度器随 Web 进程启动（首次页面/API 访问触发）。若长时间无流量，定时任务会延迟到下一次请求；需要严格按时执行请使用 PostgreSQL + 独立 Worker。
 - 单进程任务并发由 `TASK_CONCURRENCY` 控制；LLM 限流在供应商侧，必要时在网关层加队列。
 - 重启恢复：启动后 15 分钟以上仍处于 `running/planning` 的任务会被重置为 `queued`。

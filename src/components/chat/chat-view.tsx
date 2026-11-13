@@ -145,6 +145,7 @@ export function ChatView({
     [...initialMessages].reverse().find((m) => m.role === 'assistant')?.id || null,
   );
   const abortRef = React.useRef<AbortController | null>(null);
+  const mountedRef = React.useRef(true);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const atBottomRef = React.useRef(true);
   const [atBottom, setAtBottom] = React.useState(true);
@@ -166,6 +167,71 @@ export function ChatView({
   React.useEffect(() => {
     if (atBottomRef.current) scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      // 只断开当前页面的 SSE 读取；服务端 run 由 Run Manager 继续。
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  // 离开页面再回来：SSE 连接可能已经断开，但服务端生成仍在继续。
+  // 通过消息快照轮询追平文本、工具、技能与交付物，直到流式结束。
+  React.useEffect(() => {
+    const id = threadIdRef.current;
+    if (!id || !streaming || abortRef.current) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const tick = async () => {
+      if (cancelled) return;
+      if (abortRef.current) return;
+      try {
+        const response = await fetch(`/api/threads/${id}/messages`, { cache: 'no-store' });
+        if (!response.ok) throw new Error('同步失败');
+        const data = (await response.json()) as {
+          messages?: ChatMessage[];
+          approvals?: Array<{ id: string; risk: string }>;
+          artifacts?: ArtifactInfo[];
+        };
+        if (cancelled) return;
+        if (Array.isArray(data.messages)) {
+          setMessages(data.messages);
+          const lastAssistant = [...data.messages]
+            .reverse()
+            .find((message) => message.role === 'assistant');
+          if (lastAssistant) assistantRef.current = lastAssistant.id;
+          const active = data.messages.some((message) => message.status === 'streaming');
+          setStreaming(active);
+          if (!active) return;
+        }
+        if (data.approvals?.length) {
+          setApprovalRisks((prev) => ({
+            ...prev,
+            ...Object.fromEntries(data.approvals!.map((item) => [item.id, item.risk])),
+          }));
+        }
+        if (data.artifacts?.length) {
+          setArtifacts((prev) => {
+            const byId = new Map(prev.map((item) => [item.id, item]));
+            for (const item of data.artifacts!) byId.set(item.id, item);
+            return [...byId.values()];
+          });
+        }
+      } catch {
+        /* 下一次重试 */
+      }
+      if (!cancelled) timer = setTimeout(tick, 1000);
+    };
+
+    timer = setTimeout(tick, 600);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [streaming]);
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -377,6 +443,7 @@ export function ChatView({
               content: content || message.content,
             }));
             setStreaming(false);
+            if (!mountedRef.current) break;
             if (isNewThread.current && threadIdRef.current) {
               isNewThread.current = false;
               router.replace(`/chat/${threadIdRef.current}${appId ? `?app=${appId}` : ''}`);
@@ -502,8 +569,17 @@ export function ChatView({
   };
 
   const stop = () => {
+    const messageId = assistantRef.current;
     abortRef.current?.abort();
     setStreaming(false);
+    patchAssistant((message) => ({ ...message, status: 'cancelled' }));
+    if (messageId && !messageId.startsWith('tmp_')) {
+      void fetch('/api/chat/stop', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      }).catch(() => undefined);
+    }
     toast('已停止生成');
   };
 

@@ -123,6 +123,8 @@ GET /api/tasks/{taskId}
 | POST | `/api/auth/register` | 注册（可带邀请码） |
 | POST | `/api/auth/login` | 登录 |
 | POST | `/api/chat` | SSE 流式对话；body 支持 `expertId`、`mode`、`skillIds`（null=自动 / []=不使用 / 列表=手动） |
+| POST | `/api/chat/stop` | 按 `messageId` 中断生成 |
+| GET | `/api/threads/{id}/messages` | 消息/审批/交付物快照，用于离开页面后追平流式输出 |
 | POST | `/api/chat/resume` | 审批后恢复 |
 | PATCH | `/api/approvals/{id}` | 批准 / 拒绝 |
 | GET/PATCH/DELETE | `/api/threads[/{id}]` | 会话 |
