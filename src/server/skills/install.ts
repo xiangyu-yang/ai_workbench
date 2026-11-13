@@ -50,7 +50,7 @@ function buildFiles(def: SkillDefinition): PackageFileDraft[] {
   });
 }
 
-function manifestOf(files: PackageFileDraft[]): SkillManifest {
+function manifestOf(files: PackageFileDraft[], requiresExecution = false): SkillManifest {
   const entry = files.find((file) => file.path === 'SKILL.md');
   const parsed = entry ? parseSkillMarkdown(entry.content) : { frontmatter: {}, body: '', errors: [] };
   return {
@@ -59,6 +59,7 @@ function manifestOf(files: PackageFileDraft[]): SkillManifest {
     fileCount: files.length,
     packageSize: files.reduce((sum, file) => sum + file.size, 0),
     frontmatter: parsed.frontmatter,
+    requiresExecution,
   };
 }
 
@@ -120,7 +121,7 @@ async function insertVersion(params: {
 async function createSkill(orgId: string, userId: string, def: SkillDefinition): Promise<string> {
   const db = await getDb();
   const files = buildFiles(def);
-  const manifest = manifestOf(files);
+  const manifest = manifestOf(files, def.requiresExecution);
   const id = newId('skl');
   await db.insert(skills).values({
     id,
@@ -152,7 +153,7 @@ async function updateSkill(orgId: string, userId: string, skillId: string, def: 
   const existing = rows[0];
   if (!existing) throw new Error('技能不存在');
   const files = buildFiles(def);
-  const manifest = { ...manifestOf(files), tools: existing.manifest?.tools || [] };
+  const manifest = { ...manifestOf(files, def.requiresExecution), tools: existing.manifest?.tools || [] };
   const nextVersion = Math.max(existing.version || 0, 0) + 1;
   await db.delete(skillFiles).where(and(eq(skillFiles.orgId, orgId), eq(skillFiles.skillId, skillId)));
   await db

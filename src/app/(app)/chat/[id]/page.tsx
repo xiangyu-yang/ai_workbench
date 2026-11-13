@@ -152,6 +152,7 @@ export default async function ChatThreadPage({
         category: skill.category,
         icon: skill.icon,
         version: skill.version,
+        requiresExecution: Boolean(skill.manifest?.requiresExecution),
       }))}
       demoMode={providerRows.length === 0}
       modelLabel={expert?.modelId || providerRows[0]?.defaultModel || 'Cuter 演示模型'}

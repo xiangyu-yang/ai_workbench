@@ -80,6 +80,7 @@ export default async function NewChatPage({
         category: skill.category,
         icon: skill.icon,
         version: skill.version,
+        requiresExecution: Boolean(skill.manifest?.requiresExecution),
       }))}
       demoMode={providerRows.length === 0}
       modelLabel={modelLabel}

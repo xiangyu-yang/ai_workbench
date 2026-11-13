@@ -194,9 +194,13 @@ export function buildSkillPackageTools(
         required: ['skill', 'script'],
       },
       async execute(args, ctx) {
-        const pkg = findPackage(packages, String(args.skill || ''));
-        if (!pkg) return { content: '未找到该技能包', isError: true };
         const scriptPath = String(args.script || '').replace(/\\/g, '/');
+        let pkg = findPackage(packages, String(args.skill || ''));
+        if (!pkg) {
+          const matches = packages.filter((item) => item.scripts.includes(scriptPath));
+          if (matches.length === 1) pkg = matches[0];
+        }
+        if (!pkg) return { content: '未找到该技能包，请同时传入 skill 名称', isError: true };
         if (!scriptPath.startsWith('scripts/') || scriptPath.includes('..')) {
           return { content: '只能执行 scripts/ 下的脚本', isError: true };
         }
@@ -208,7 +212,17 @@ export function buildSkillPackageTools(
         const interpreter =
           ext === '.py' ? 'python3' : ext === '.sh' ? '/bin/bash' : ext === '.mjs' || ext === '.js' || ext === '.cjs' ? 'node' : '';
         if (!interpreter) return { content: '不支持的脚本类型', isError: true };
-        const rawArgs = Array.isArray(args.args) ? args.args.map((item) => String(item)).slice(0, 10) : [];
+        let parsedArgs: unknown = args.args;
+        if (typeof parsedArgs === 'string' && parsedArgs.trim().startsWith('[')) {
+          try {
+            parsedArgs = JSON.parse(parsedArgs);
+          } catch {
+            /* keep string and report below */
+          }
+        }
+        const rawArgs = Array.isArray(parsedArgs)
+          ? parsedArgs.map((item) => String(item)).slice(0, 10)
+          : [];
         if (rawArgs.some((item) => item.length > 300 || item.includes('\0'))) {
           return { content: '脚本参数过长或包含非法字符', isError: true };
         }

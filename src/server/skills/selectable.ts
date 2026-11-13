@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
-import { skills, type Role } from '@/server/db/schema';
+import { skills, type Role, type SkillManifest } from '@/server/db/schema';
 import { ApiError } from '@/server/http';
 import { isAdmin } from '@/server/auth/rbac';
 
@@ -13,6 +13,7 @@ export type SelectableSkill = {
   version: number;
   visibility: string;
   createdBy: string | null;
+  manifest: SkillManifest;
 };
 
 export async function listSelectableSkills(
@@ -31,6 +32,7 @@ export async function listSelectableSkills(
       version: skills.version,
       visibility: skills.visibility,
       createdBy: skills.createdBy,
+      manifest: skills.manifest,
     })
     .from(skills)
     .where(and(eq(skills.orgId, orgId), eq(skills.status, 'published')))
@@ -55,6 +57,7 @@ export async function assertSelectableSkills(
       id: skills.id,
       visibility: skills.visibility,
       createdBy: skills.createdBy,
+      manifest: skills.manifest,
     })
     .from(skills)
     .where(

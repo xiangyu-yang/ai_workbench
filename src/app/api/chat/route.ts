@@ -5,6 +5,7 @@ import {
   attachments,
   experts,
   messages,
+  skills,
   threads,
   type MessagePart,
 } from '@/server/db/schema';
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
     assertSameOrigin(req);
     const auth = await requireApi('member');
     const body = Body.parse(await readJson(req));
+    let mode = body.mode;
     const text = body.text.trim();
     const attachmentIds = body.attachmentIds || [];
     if (!text && !attachmentIds.length) {
@@ -68,6 +70,17 @@ export async function POST(req: Request) {
       skillIds = thread.skillIds ?? null;
     }
 
+    if (skillIds?.length && mode !== 'agent') {
+      const selected = await db
+        .select({ manifest: skills.manifest })
+        .from(skills)
+        .where(and(eq(skills.orgId, auth.org.id), inArray(skills.id, skillIds)));
+      if (selected.some((row) => row.manifest?.requiresExecution)) {
+        // 股票行情等技能必须执行脚本；问答/规划模式自动升级为执行，避免出现“未知工具”。
+        mode = 'agent';
+      }
+    }
+
     let expertId: string | null = thread?.expertId || null;
     if (body.expertId !== undefined) expertId = body.expertId;
     if (expertId === undefined) expertId = null;
@@ -104,7 +117,7 @@ export async function POST(req: Request) {
         userId: auth.user.id,
         expertId,
         title,
-        mode: body.mode,
+        mode,
         skillIds,
         source: 'chat',
       });
@@ -113,7 +126,7 @@ export async function POST(req: Request) {
         .update(threads)
         .set({
           expertId,
-          mode: body.mode,
+          mode,
           skillIds,
           title: thread.title === '新对话' ? title : thread.title,
           updatedAt: new Date(),
@@ -169,7 +182,7 @@ export async function POST(req: Request) {
         userId: auth.user.id,
         threadId: threadId as string,
         messageId: assistantId,
-        mode: body.mode,
+        mode,
         skillIds,
         emit: (event) => send(event.type, event),
       });

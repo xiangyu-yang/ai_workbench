@@ -2,12 +2,17 @@ import type { SkillDefinition } from './library';
 import {
   DAILY_SNAPSHOT_TEMPLATE,
   FETCH_MARKET_SCRIPT,
+  FUNDAMENTALS_SCRIPT,
   LIVE_MARKET_SCAN_SCRIPT,
   MARKET_DATA_REFERENCE,
   VOLUME_PRICE_REFERENCE,
 } from './stock-data';
 
 const STOCK_BODY = `# 股票深度分析与预测
+
+## 语言
+
+默认使用简体中文输出，标题、表格、图表说明、工具解释与免责声明都必须中文；即使用户上传的素材或工具返回值是英文，也先翻译再用中文分析，不要切换成英文。
 
 ## 何时使用
 
@@ -41,16 +46,25 @@ const STOCK_BODY = `# 股票深度分析与预测
 
 必须优先获取真实日线，不允许凭记忆写“今日行情”：
 - A 股：600941 / 600941.SH；港股：00700.HK；美股：AAPL。
-- 调用 run_skill_script：
+- 调用 run_skill_script 时必须同时传：
+  - skill：股票深度分析与预测
   - script：scripts/live_market_scan.py
-  - args：["--symbol","600941","--days","250","--format","markdown"]
+  - args：["--symbol","600941","--days","250","--format","markdown"]（数组，不要传 JSON 字符串）
+- 如果脚本失败，最多重试一次（检查代码、网络或改用 fetch_market_data.py）；不要连续用 read_url 猜接口 URL。仍失败就让用户上传 CSV。
 - 脚本会拉取腾讯公开行情，输出：收盘/涨跌幅/成交额、换手率、5 日与 20 日量比（当日成交量/前 N 日均量）、量价组合（放量上涨/放量下跌/缩量上涨/缩量下跌）、5 日量价背离、OBV/MFI/VWAP、均线、RSI、ATR、支撑阻力。
 - 如果实时接口失败，先调用 scripts/fetch_market_data.py 检查代码与网络；仍失败则让用户上传 CSV 或稍后重试。**禁止编造当日行情。**
-- 报告第一屏必须有“行情快照 + 量价诊断”，并注明数据截止时间与来源。
+- live_market_scan 成功后，直接进入研究报告；不要再用 read_url 抓新浪/同花顺/雪球等页面补数据。
+- 报告第一屏必须有“行情快照 + 量价诊断”，并注明数据截止时间与来源；脚本同时返回 8 期基本面与 PE 锚定情景，标准请求不需要再调用其他脚本。
 - 如果用户只提供 CSV，则用 scripts/technical_scan.py 分析，并注明数据由用户提供、可能非最新。
 
 ### 3. 取证与数据审计
 
+- **A 股基本面已包含在 live_market_scan 中**：最新报告期营收、归母净利、同比、ROE、毛利率、净利率、负债率、EPS/BPS、经营现金流，以及近 8 期趋势与 PE 锚定情景。
+  - 只有用户明确要求更长历史、更多科目或自定义 DCF 时，才调用 scripts/fetch_fundamentals.py；标准分析不要再调用脚本。
+  - 脚本返回结构化字段，禁止自己解析交易所/财经网站 HTML 或原始数组。
+- **不要用 read_url 抓新浪/同花顺/雪球 F10 等原始 HTML**；接口常乱码或返回巨型数组。脚本失败时明确写“基本面未获取”，不要写数据处理教程、不要解析原始数组。
+- 数据获取最多：行情脚本 1 次、基本面脚本 1 次、必要的公开检索 1 次；失败后立即收敛，不要连续换 URL。
+- 港股/美股没有结构化基本面脚本时，使用实时行情、公开财报摘要与定性分析，并标注数据缺口。
 - 一手来源优先：年报/季报、招股书、交易所公告、业绩会、官方指引、监管文件。
 - 二手来源：权威行业报告、同业财报、可信媒体；标注日期与原文位置。
 - 每个关键数字必须有来源、口径、币种、时间。
@@ -75,7 +89,9 @@ const STOCK_BODY = `# 股票深度分析与预测
 - **分部估值（SOTP）**：多业务公司分别估值后加总。
 - **股息/回购**：股息率、派息率、回购收益率。
 
-使用 scripts/equity_valuation.py 计算 DCF、反向 DCF、可比 PE 和情景期望值；输入 JSON，资产中有示例。脚本输出的数字仍需你检查假设，不要把模型输出当成事实。
+**标准请求不要调用 equity_valuation.py**：live_market_scan 已给出 PE 锚定情景。只有用户提供真实 FCF/WACC/净债务等假设，或明确要求自定义 DCF 时才使用 scripts/equity_valuation.py；脚本输出的数字仍需检查假设。
+
+**禁止使用合成示例数据做真实标的估值**：如果技能中没有真实输入，就不要调用演示脚本；真实标的只使用实时脚本、结构化基本面接口和用户提供的假设。
 
 ### 6. 技术面与交易时机（可选）
 
@@ -95,7 +111,7 @@ const STOCK_BODY = `# 股票深度分析与预测
 
 ### 8. 概率化预测
 
-不要给单点“必涨/必跌”结论。使用 assets/scenario-sample.json 的结构：
+不要给单点“必涨/必跌”结论。按以下结构：
 - 悲观 / 基准 / 乐观三种情景；
 - 每种情景给概率、目标价/区间、触发条件、关键假设；
 - 计算概率加权目标价、期望收益、下行风险；
@@ -108,13 +124,18 @@ const STOCK_BODY = `# 股票深度分析与预测
 
 按 assets/equity-research-template.md 输出：
 摘要（结论/评级/目标区间/置信度）→ 生意与行业 → 护城河 → 财务 → 估值 → 情景预测 → 催化剂 → 风险 → 反方观点 → 数据与来源。
-用 workspace_write 写入 Markdown，文件名含标的与日期。
+用 workspace_write 写入 Markdown，文件名含标的与日期。**正文控制在 1200-2500 汉字，总文件不超过 8KB**；不要把 skill references、原始 JSON 或整段工具输出复制进报告，避免超长工具参数导致模型解析失败。
+
+普通分析**不要调用 create_task**；只有用户明确要求后台执行、持续跟踪或定时任务时才创建任务。
 
 ### 10. 质量门槛
 
 - 报告开头有真实行情快照、数据截止日与来源；不得用记忆替代当日行情。
 - 量价必须说明：5/20 日量比（当日成交量/前 N 日均量）、量价组合、5 日背离、关键位；不能只写“放量”或“缩量”，也不要把量比解释成“N 日均量/60 日均量”。量比阈值以脚本为准：≥1.2 放量、≤0.8 缩量，不要简单写成“>1 就是放量”。
-- 每个关键数字有来源、日期、口径。
+- 每个关键数字有来源、日期、口径；财务表格只能使用工具返回字段，缺失写“未获取”，禁止补写记忆中的历史财务数字。
+- 真实标的只使用实时脚本与结构化基本面接口；不要引用演示数字。
+- 行业规模、批价、分红率、历史 PE 分位、同业收入等没有通过工具获取的数字，只能写“需核验/未获取”或定性描述，不得编造精确值。
+- DCF 的 FCF 基数若未从结构化财报计算，必须标为情景假设，不能写成已实现事实。
 - 至少两种估值方法，且说明差异。
 - 至少一个反方观点和失效条件。
 - 情景概率合计 100%，目标价与假设一致。
@@ -125,6 +146,7 @@ const STOCK_BODY = `# 股票深度分析与预测
 ## 输出规范
 
 - 开头先给“行情快照 + 量价诊断”，再给结论卡片；写明数据截止日、来源、5/20 日量比与量价组合。
+- 只读取必要的 1-2 个 references；live_market_scan 已包含行情、量价、8 期基本面和 PE 锚定情景，标准请求不要反复取数。
 - 结论卡片：评级（买入/增持/中性/减持/回避）、时间维度、目标区间、概率加权收益、置信度。
 - 目标价用区间，不用单点；说明对应情景与概率。
 - 估值表展示关键假设与敏感性（WACC ±1%、增长 ±2%）。
@@ -142,12 +164,11 @@ const STOCK_BODY = `# 股票深度分析与预测
 - references/risk-discipline.md：仓位、回撤、行为偏差与合规
 - scripts/equity_valuation.py：DCF、反向 DCF、可比 PE、情景期望值
 - scripts/fetch_market_data.py：拉取 A/H/US 日线与实时快照
+- scripts/fetch_fundamentals.py：A 股结构化财务快照（营收/利润/ROE/现金流/趋势）
 - scripts/live_market_scan.py：实时行情 + 量价诊断 + 技术面，一条命令产出
 - scripts/technical_scan.py：用户 CSV 的均线、RSI、MACD、ATR、布林带、回撤、支撑阻力
 - scripts/risk_position.py：仓位、止损、R 倍数、参数 VaR
 - assets/equity-research-template.md：完整研究报告模板
-- assets/fundamentals-sample.json：估值脚本输入示例（非真实数据）
-- assets/scenario-sample.json：三情景预测示例
 - assets/price-sample.csv：技术扫描输入示例（合成数据）
 - assets/valuation-checklist.md：估值与预测检查清单
 - assets/daily-market-snapshot.md：行情快照与量价诊断模板
@@ -657,10 +678,14 @@ def reverse_dcf(price, fcf, wacc, terminal_growth, shares, net_debt, years):
 
 def main():
     args = parse_args()
-    if not args.input:
+    input_path = os.environ.get('SKILL_INPUT') or args.input
+    if not input_path:
         raise SystemExit('缺少输入：使用 --input 或 SKILL_INPUT')
-    with open(args.input, 'r', encoding='utf-8-sig') as handle:
+    with open(input_path, 'r', encoding='utf-8-sig') as handle:
         data = json.load(handle)
+    note = str(data.get('note') or '')
+    if str(data.get('ticker') or '').upper() == 'DEMO' or '合成示例' in note:
+        raise SystemExit('检测到 DEMO/合成示例数据，不能用于真实标的估值；请提供真实假设或使用 live_market_scan')
 
     price = float(require(data, 'price'))
     shares = float(require(data, 'shares'))
@@ -1132,6 +1157,7 @@ const PRICE_SAMPLE = String.raw`date,open,high,low,close,volume
 `;
 
 export const STOCK_SKILL: SkillDefinition = {
+  requiresExecution: true,
   name: '股票深度分析与预测',
   description:
     '面向 A 股/港股/美股的个股深度研究：生意模式、护城河、财务质量、DCF/反向 DCF/相对估值、技术面执行、催化剂与概率化情景预测，输出可审计报告而非单点喊单。',
@@ -1158,12 +1184,11 @@ export const STOCK_SKILL: SkillDefinition = {
     { path: 'references/risk-discipline.md', content: RISK_DISCIPLINE },
     { path: 'scripts/equity_valuation.py', content: EQUITY_VALUATION_SCRIPT },
     { path: 'scripts/fetch_market_data.py', content: FETCH_MARKET_SCRIPT },
+    { path: 'scripts/fetch_fundamentals.py', content: FUNDAMENTALS_SCRIPT },
     { path: 'scripts/live_market_scan.py', content: LIVE_MARKET_SCAN_SCRIPT },
     { path: 'scripts/technical_scan.py', content: TECHNICAL_SCRIPT },
     { path: 'scripts/risk_position.py', content: RISK_SCRIPT },
     { path: 'assets/equity-research-template.md', content: EQUITY_TEMPLATE },
-    { path: 'assets/fundamentals-sample.json', content: FUNDAMENTALS_SAMPLE },
-    { path: 'assets/scenario-sample.json', content: SCENARIO_SAMPLE },
     { path: 'assets/price-sample.csv', content: PRICE_SAMPLE },
     { path: 'assets/valuation-checklist.md', content: WEIGHTED_CHECKLIST },
     { path: 'assets/daily-market-snapshot.md', content: DAILY_SNAPSHOT_TEMPLATE },

@@ -57,6 +57,21 @@ async function main() {
     expert = expertRows[0];
   }
   if (!expert) throw new Error('创建股票专家失败');
+  await db
+    .update(experts)
+    .set({
+      description: STOCK_ADVISOR.description,
+      icon: STOCK_ADVISOR.icon,
+      accent: STOCK_ADVISOR.accent,
+      category: STOCK_ADVISOR.category,
+      systemPrompt: STOCK_ADVISOR.systemPrompt,
+      temperature: STOCK_ADVISOR.temperature,
+      maxSteps: STOCK_ADVISOR.maxSteps,
+      toolPolicy: STOCK_ADVISOR.toolPolicy,
+      defaultMode: STOCK_ADVISOR.defaultMode,
+      visibility: STOCK_ADVISOR.visibility,
+    })
+    .where(eq(experts.id, expert.id));
 
   let appRows = await db
     .select()

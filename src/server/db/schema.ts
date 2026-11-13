@@ -154,6 +154,7 @@ export type SkillManifest = {
   entry?: string;
   fileCount?: number;
   packageSize?: number;
+  requiresExecution?: boolean;
 };
 
 export type AppType = 'internal' | 'external';

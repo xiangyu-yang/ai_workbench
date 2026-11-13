@@ -157,6 +157,16 @@ export function ChatView({
     setExpertId(id);
     setSkillIds(null);
   };
+  const changeSkills = (ids: string[] | null) => {
+    setSkillIds(ids);
+    const requiresExecution = (ids || []).some(
+      (id) => skills.find((skill) => skill.id === id)?.requiresExecution,
+    );
+    if (requiresExecution && mode !== 'agent') {
+      setMode('agent');
+      toast('该技能需要执行模式，已自动切换');
+    }
+  };
 
   const scrollToBottom = React.useCallback((smooth = false) => {
     const el = scrollRef.current;
@@ -485,7 +495,15 @@ export function ChatView({
   const send = async (text: string, attachments: AttachmentInfo[] = [], overrideMode?: string) => {
     const clean = text.trim();
     if ((!clean && !attachments.length) || streaming) return;
-    const activeMode = overrideMode || mode;
+    const requestedMode = overrideMode || mode;
+    const requiresExecution = (skillIds || []).some(
+      (id) => skills.find((skill) => skill.id === id)?.requiresExecution,
+    );
+    const activeMode = requiresExecution && requestedMode !== 'agent' ? 'agent' : requestedMode;
+    if (activeMode !== requestedMode) {
+      setMode('agent');
+      toast('该技能需要执行模式，已自动切换');
+    }
     setError('');
     setStreaming(true);
     atBottomRef.current = true;
@@ -729,7 +747,7 @@ export function ChatView({
                   onExpertChange={changeExpert}
                   skills={skills}
                   skillIds={skillIds}
-                  onSkillsChange={setSkillIds}
+                  onSkillsChange={changeSkills}
                   mode={mode}
                   onModeChange={setMode}
                   streaming={streaming}
@@ -802,7 +820,7 @@ export function ChatView({
                   onExpertChange={changeExpert}
                   skills={skills}
                   skillIds={skillIds}
-                  onSkillsChange={setSkillIds}
+                  onSkillsChange={changeSkills}
                   mode={mode}
                   onModeChange={setMode}
                   streaming={streaming}
@@ -1345,6 +1363,7 @@ function Composer({
       skill.name.toLowerCase().includes(skillQuery.toLowerCase()) ||
       skill.description.toLowerCase().includes(skillQuery.toLowerCase()),
   );
+  const requiresExecution = selectedSkills.some((skill) => skill.requiresExecution);
   const skillLabel =
     skillIds === null
       ? '技能 · 自动'
@@ -1656,6 +1675,9 @@ function Composer({
                           <span className="flex items-center gap-1.5">
                             <span className="truncate text-[12px] font-medium text-ink">{skill.name}</span>
                             <Badge variant="outline" className="shrink-0 scale-90">{skill.category}</Badge>
+                            {skill.requiresExecution ? (
+                              <span className="shrink-0 rounded-full bg-warning/10 px-1.5 py-0.5 text-[8.5px] text-warning">需执行</span>
+                            ) : null}
                           </span>
                           <span className="mt-0.5 line-clamp-2 block text-[10.5px] leading-relaxed text-faint">
                             {skill.description}
@@ -1751,6 +1773,9 @@ function Composer({
             >
               切换到执行
             </button>
+          ) : null}
+          {requiresExecution && mode !== 'agent' ? (
+            <span className="shrink-0 text-warning">该技能需要执行模式，发送时自动切换</span>
           ) : null}
           <span className="ml-auto hidden max-w-[180px] truncate text-faint sm:block">
             {demoMode ? '演示模型' : modelLabel || '默认模型'}

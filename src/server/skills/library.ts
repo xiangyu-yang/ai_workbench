@@ -26,6 +26,7 @@ export type SkillDefinition = {
   body: string;
   files: SkillSeedFile[];
   bindTo: string[];
+  requiresExecution?: boolean;
 };
 
 import { STOCK_SKILL } from './stock-skill';
