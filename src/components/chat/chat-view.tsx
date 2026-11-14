@@ -134,6 +134,7 @@ export function ChatView({
     initialMessages.some((m) => m.status === 'streaming'),
   );
   const [error, setError] = React.useState('');
+  const [syncNonce, setSyncNonce] = React.useState(0);
   const [usage, setUsage] = React.useState<{ input: number; output: number; cost: number } | null>(
     null,
   );
@@ -184,7 +185,13 @@ export function ChatView({
   const activeArtifact = artifacts.find((item) => item.id === activeArtifactId) || null;
   const liveAssistant = [...messages]
     .reverse()
-    .find((message) => message.role === 'assistant' && message.status === 'streaming') || null;
+    .find(
+      (message) =>
+        message.role === 'assistant' &&
+        (message.status === 'streaming' ||
+          (message.status === 'awaiting_approval' &&
+            !message.parts.some((part) => part.type === 'tool' && part.status === 'pending_approval'))),
+    ) || null;
   const selectedExpert = experts.find((item) => item.id === expertId) || null;
   const changeExpert = (id: string) => {
     setExpertId(id);
@@ -261,7 +268,7 @@ export function ChatView({
           if (lastAssistant) assistantRef.current = lastAssistant.id;
           const active = data.messages.some((message) => message.status === 'streaming');
           setStreaming(active);
-          if (!active) return;
+          if (!active && !data.messages.some((message) => message.status === 'awaiting_approval')) return;
         }
         if (data.approvals?.length) {
           setApprovalRisks((prev) => ({
@@ -287,7 +294,7 @@ export function ChatView({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [hasLiveMessage]);
+  }, [hasLiveMessage, streaming, syncNonce]);
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -629,6 +636,7 @@ export function ChatView({
     } finally {
       setStreaming(false);
       abortRef.current = null;
+      setSyncNonce((value) => value + 1);
     }
   };
 
@@ -697,6 +705,7 @@ export function ChatView({
       setStreaming(false);
     } finally {
       abortRef.current = null;
+      setSyncNonce((value) => value + 1);
     }
   };
 
@@ -1240,7 +1249,13 @@ function MessageItem({
         <span className="text-[11.5px] font-medium text-ink">Cuter</span>
         {message.model ? <span className="text-[10px] text-faint">{message.model}</span> : null}
         <span className="text-[10px] text-faint">{relativeTime(message.createdAt)}</span>
-        {message.status === 'awaiting_approval' ? (
+        {message.status === 'streaming' ? (
+          <Badge variant="success" dot>
+            生成中
+          </Badge>
+        ) : null}
+        {message.status === 'awaiting_approval' &&
+        message.parts.some((part) => part.type === 'tool' && part.status === 'pending_approval') ? (
           <Badge variant="warning" dot>
             等待审批
           </Badge>

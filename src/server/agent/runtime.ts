@@ -1017,8 +1017,17 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     finalStockText.length > 600
   ) {
     try {
-      const artifactText = finalStockText.replace(/(^|[^\n])(#{1,3}\s+)/g, '$1\n\n$2').trim();
-      const heading = /#{1,3}\s*([^\n#]{2,100})/.exec(artifactText)?.[1]?.trim() || '股票分析报告';
+      const normalized = finalStockText.replace(/(^|[^\n])(#{1,3}\s+)/g, '$1\n\n$2').trim();
+      const headings = [...normalized.matchAll(/^#{1,3}[ \t]+(.+)$/gm)];
+      const reportHeading =
+        headings.find((match) => {
+          const text = match[1].trim();
+          return /(报告|分析|研究|预测|策略)/.test(text) && !/^(第[一二三四五六七八九十\d]+步|候选)/.test(text);
+        }) || headings.find((match) => !/^(第[一二三四五六七八九十]+步|候选)/.test(match[1].trim()));
+      const artifactText = reportHeading?.index
+        ? normalized.slice(reportHeading.index).trim()
+        : normalized;
+      const heading = reportHeading?.[1]?.trim().replace(/^#+\s*/, '') || '股票分析报告';
       const safeName = heading.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
       const name = safeName + '_' + new Date().toISOString().slice(0, 10) + '.md';
       const artifact = await createArtifact({
