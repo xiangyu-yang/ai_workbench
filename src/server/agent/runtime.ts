@@ -284,7 +284,8 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   const toolCallCounts = new Map<string, number>();
   let loopGuard = false;
   const stockResearch = toolset.skills.some((skill) => skill.name.includes('股票深度分析'));
-  const blockedStockTools = new Set(['read_url', 'fetch_url', 'http_request', 'web_search']);
+  const blockedStockTools = new Set(['read_url', 'fetch_url', 'http_request']);
+  if (!process.env.TAVILY_API_KEY) blockedStockTools.add('web_search');
 
   let llmMessages: LlmMessage[] = [];
   let systemPrompt = '';
@@ -427,7 +428,9 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     params.signal?.addEventListener('abort', onAbort, { once: true });
     try {
       const result = await tool.execute(validated.value, { ...toolCtx, signal: controller.signal });
-      return { ...result, content: truncate(result.content, 6_000) };
+      const cap =
+        call.name === 'run_skill_script' ? 12_000 : call.name === 'skill_read_file' ? 8_000 : call.name === 'web_search' ? 4_000 : 6_000;
+      return { ...result, content: truncate(result.content, cap) };
     } catch (err) {
       return {
         content: `工具执行失败：${(err as Error).message || '未知错误'}`,
@@ -646,18 +649,25 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     }));
 
   const fitMessages = (messages: LlmMessage[]): LlmMessage[] => {
-    const maxChars = 24_000;
+    const maxChars = 32_000;
     const system = messages[0]?.role === 'system' ? messages[0] : null;
     const rest = system ? messages.slice(1) : messages;
     const lastUserIndex = [...rest].map((message) => message.role).lastIndexOf('user');
     if (lastUserIndex < 0) return messages;
     const sizeOf = (message: LlmMessage) =>
       typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length;
-    const tail = rest.slice(lastUserIndex).map((message) =>
-      message.role === 'tool'
-        ? { ...message, content: truncate(message.content, 2_500) }
-        : message,
-    );
+    const tail = rest.slice(lastUserIndex).map((message) => {
+      if (message.role !== 'tool') return message;
+      const cap =
+        message.name === 'run_skill_script'
+          ? 6_000
+          : message.name === 'skill_read_file'
+            ? 3_000
+            : message.name === 'web_search'
+              ? 3_000
+              : 2_500;
+      return { ...message, content: truncate(message.content, cap) };
+    });
     let used = (system ? sizeOf(system) : 0) + tail.reduce((sum, message) => sum + sizeOf(message), 0);
     const head = rest.slice(0, lastUserIndex);
     const keptHead: LlmMessage[] = [];
@@ -712,11 +722,15 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
         String((part.args as Record<string, unknown> | undefined)?.script || '') ===
           'scripts/live_market_scan.py',
     );
-    let skillReadSucceeded = parts.some(
-      (part) =>
-        part.type === 'tool' &&
-        part.status === 'ok' &&
-        (part.name === 'skill_read_file' || part.name === 'read_skill_file'),
+    const skillReadPaths = new Set(
+      parts
+        .filter(
+          (part): part is ToolPart =>
+            part.type === 'tool' &&
+            part.status === 'ok' &&
+            (part.name === 'skill_read_file' || part.name === 'read_skill_file'),
+        )
+        .map((part) => String((part.args as Record<string, unknown> | undefined)?.path || '')),
     );
     const seenStepTexts = new Set<string>();
     const lastRequest = lastUserText(llmMessages);
@@ -920,10 +934,17 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             forceBreak = true;
             continue;
           }
-          if (stockResearch && skillReadSucceeded && isSkillRead) {
+          const skillReadPath = isSkillRead
+            ? String((call.args as Record<string, unknown> | undefined)?.path || '')
+            : '';
+          if (
+            stockResearch &&
+            isSkillRead &&
+            (skillReadPaths.has(skillReadPath) || skillReadPaths.size >= 3)
+          ) {
             part.status = 'ok';
             part.summary = '已读取必要参考资料，跳过重复读取';
-            part.output = '本轮已读取过参考资料；live_market_scan 已包含标准分析所需数据，请直接完成报告。';
+            part.output = '本轮已读取过该资料；请直接基于已有框架完成报告。';
             loopGuard = true;
             forceBreak = true;
             continue;
@@ -986,7 +1007,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           send({ type: 'tool_result', id: call.id, name: call.name, status: 'ok', summary: '执行中…' });
           const toolResult = await executeTool(call, tool);
           if (!toolResult.isError && isLiveScan) liveScanSucceeded = true;
-          if (!toolResult.isError && isSkillRead) skillReadSucceeded = true;
+          if (!toolResult.isError && isSkillRead) skillReadPaths.add(skillReadPath);
           if (!toolResult.isError && call.name === 'workspace_write') forceBreak = true;
           if (toolResult.isError) {
             consecutiveToolErrors += 1;
@@ -1147,7 +1168,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           {
             role: 'user',
             content:
-              '你已完成数据获取。现在不要调用工具，直接输出最终的中文研究报告正文，1000-1800 字。必须包含：行情快照与量价诊断、基本面要点、估值锚点/三情景、主要风险与失效条件、数据截止和免责声明。不要只写“开始撰写”，不要复述工具参数。',
+              '你已完成数据获取。现在不要调用工具，直接输出最终的中文研究报告正文，1800-3000 字。必须包含：行情快照与量价诊断、基本面要点、估值锚点/三情景、主要风险与失效条件、数据截止和免责声明。不要只写“开始撰写”，不要复述工具参数。',
           },
         ],
         temperature: expert?.temperature ?? 0.4,
