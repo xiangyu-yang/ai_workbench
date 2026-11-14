@@ -4,6 +4,8 @@ import {
   FETCH_MARKET_SCRIPT,
   FUNDAMENTALS_SCRIPT,
   LIVE_MARKET_SCAN_SCRIPT,
+  SCREEN_STOCKS_SCRIPT,
+  STOCK_WATCHLIST,
   MARKET_DATA_REFERENCE,
   VOLUME_PRICE_REFERENCE,
 } from './stock-data';
@@ -63,6 +65,17 @@ const STOCK_BODY = `# 股票深度分析与预测
 - live_market_scan 成功后，直接进入研究报告；不要再用 read_url 抓新浪/同花顺/雪球等页面补数据。
 - 报告第一屏必须有“行情快照 + 量价诊断”，并注明数据截止时间与来源；脚本同时返回 8 期基本面与 PE 锚定情景，标准请求不需要再调用其他脚本。
 - 如果用户只提供 CSV，则用 scripts/technical_scan.py 分析，并注明数据由用户提供、可能非最新。
+
+### 2.5 多标的推荐 / 选股
+
+当用户要求“推荐几只/选股/潜力股/龙头股”时：
+- 不要用单股脚本反复读取同一份框架；先明确或假设范围（行业、风格、市值、风险），并在报告开头写明。
+- 调用 scripts/screen_stocks.py 获取候选池，例如：
+  - args：["--limit","10","--min-market-cap","300","--max-pe","40","--format","markdown"]
+  - 行业筛选可用 --industry；潜力股可加大 --max-pe、降低市值门槛。
+- 脚本输出代码、名称、行业、价格、涨跌幅、PE/PB、总市值、换手率；它只是候选池，不是买入建议。
+- 从候选池中选择最多 3 只，再调用 live_market_scan.py 做量价与基本面核验；不要对每只股票重复读取同一 reference。
+- 推荐结论必须写明筛选条件、数据截止、主要风险和“不构成投资建议”。
 
 ### 3. 取证与数据审计
 
@@ -173,6 +186,7 @@ const STOCK_BODY = `# 股票深度分析与预测
 - scripts/equity_valuation.py：DCF、反向 DCF、可比 PE、情景期望值
 - scripts/fetch_market_data.py：拉取 A/H/US 日线与实时快照
 - scripts/fetch_fundamentals.py：A 股结构化财务快照（营收/利润/ROE/现金流/趋势）
+- scripts/screen_stocks.py：A 股候选池筛选（市值/PE/行业/排序）
 - scripts/live_market_scan.py：实时行情 + 量价诊断 + 技术面，一条命令产出
 - scripts/technical_scan.py：用户 CSV 的均线、RSI、MACD、ATR、布林带、回撤、支撑阻力
 - scripts/risk_position.py：仓位、止损、R 倍数、参数 VaR
@@ -1193,6 +1207,7 @@ export const STOCK_SKILL: SkillDefinition = {
     { path: 'scripts/equity_valuation.py', content: EQUITY_VALUATION_SCRIPT },
     { path: 'scripts/fetch_market_data.py', content: FETCH_MARKET_SCRIPT },
     { path: 'scripts/fetch_fundamentals.py', content: FUNDAMENTALS_SCRIPT },
+    { path: 'scripts/screen_stocks.py', content: SCREEN_STOCKS_SCRIPT },
     { path: 'scripts/live_market_scan.py', content: LIVE_MARKET_SCAN_SCRIPT },
     { path: 'scripts/technical_scan.py', content: TECHNICAL_SCRIPT },
     { path: 'scripts/risk_position.py', content: RISK_SCRIPT },
@@ -1200,5 +1215,6 @@ export const STOCK_SKILL: SkillDefinition = {
     { path: 'assets/price-sample.csv', content: PRICE_SAMPLE },
     { path: 'assets/valuation-checklist.md', content: WEIGHTED_CHECKLIST },
     { path: 'assets/daily-market-snapshot.md', content: DAILY_SNAPSHOT_TEMPLATE },
+    { path: 'assets/stock-watchlist.csv', content: STOCK_WATCHLIST },
   ],
 };

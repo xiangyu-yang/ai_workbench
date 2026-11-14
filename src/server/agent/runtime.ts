@@ -253,6 +253,8 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   if (readSkillFile && !toolMap.has('read_skill_file')) {
     toolMap.set('read_skill_file', readSkillFile);
   }
+  const toolCallCounts = new Map<string, number>();
+  let loopGuard = false;
 
   let llmMessages: LlmMessage[] = [];
   let systemPrompt = '';
@@ -609,6 +611,17 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   let lastFinishReason = '';
 
   try {
+    const stableValue = (value: unknown): string => {
+      if (Array.isArray(value)) return `[${value.map((item) => stableValue(item)).join(',')}]`;
+      if (value && typeof value === 'object') {
+        const object = value as Record<string, unknown>;
+        return `{${Object.keys(object).sort().map((key) => `${key}:${stableValue(object[key])}`).join(',')}}`;
+      }
+      return JSON.stringify(value ?? null);
+    };
+    const callSignature = (call: LlmToolCall) => `${call.name}:${stableValue(call.args || {})}`;
+    let forceBreak = false;
+
     while (steps < maxSteps) {
       if (params.signal?.aborted) {
         cancelled = true;
@@ -772,6 +785,20 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           };
           if (!parts.includes(part)) parts.push(part);
           part.args = call.args;
+          const signature = callSignature(call);
+          const repeatCount = (toolCallCounts.get(signature) || 0) + 1;
+          toolCallCounts.set(signature, repeatCount);
+          if (repeatCount >= 2) {
+            loopGuard = true;
+            llmMessages.push({
+              role: 'user',
+              content: '该工具和相同参数刚刚已经执行过，结果已在上文。禁止重复读取或重复执行，直接基于已有结果继续完成任务。',
+            });
+          }
+          if (repeatCount >= 3) {
+            forceBreak = true;
+            break;
+          }
           const cached = findCached(call);
           if (cached) {
             part.status = 'ok';
@@ -836,6 +863,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           await applyResultExtras(toolResult, parts, send, call.id);
           schedulePersist(true);
         }
+        if (forceBreak) break;
         continue;
       }
 
@@ -927,7 +955,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     loadedStockSkill &&
     hasToolResult &&
     !wroteArtifact &&
-    looksLikeProgressOnly
+    (looksLikeProgressOnly || loopGuard)
   ) {
     try {
       let reportPart: TextPart | null = null;

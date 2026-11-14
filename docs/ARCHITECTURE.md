@@ -212,6 +212,8 @@ while (step < maxSteps) {
 ### 6.2 技能（Skill Package）
 - **标准结构**：`SKILL.md`（YAML frontmatter：name/description/version/license/allowed-tools）+ `references/` + `scripts/` + `assets/`。
 - **渐进式披露**：运行时只注入 SKILL.md 正文与文件索引；细节通过只读 `skill_read_file` 按需读取，避免一次性占满上下文。
+- **循环保护**：相同工具与参数重复调用会被去重、提示并强制收口，避免模型反复读取同一文件。
+- **生成状态**：对话在流式期间展示阶段、已用时间和停止入口；服务端仍保留 Run Manager，切页可恢复。
 - **报告收口**：股票技能在工具已返回但模型只输出“开始撰写”等过渡语时，自动追加一次无工具收口并生成可下载的 Markdown 交付物。
 - **可观测性**：消息新增 `skill` part，记录本次加载的技能、版本、自动/手动来源与文件数；界面在回答上方展示，显式调用 `skill_read_file`/`run_skill_script` 时标记“已使用”。
 - **脚本执行**：`run_skill_script` 在 `DATA_DIR/skill-runs/{org}/{skill}/{version}` 隔离目录执行，支持 Node/Python/Bash，30s 超时、输出截断、强制人工审批；`SKILL_ALLOW_SCRIPTS=false` 可整体关闭。

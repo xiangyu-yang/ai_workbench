@@ -182,6 +182,9 @@ export function ChatView({
   };
 
   const activeArtifact = artifacts.find((item) => item.id === activeArtifactId) || null;
+  const liveAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === 'assistant' && message.status === 'streaming') || null;
   const selectedExpert = experts.find((item) => item.id === expertId) || null;
   const changeExpert = (id: string) => {
     setExpertId(id);
@@ -821,6 +824,7 @@ export function ChatView({
                     onPreview={setActiveArtifactId}
                   />
                 ))}
+                {liveAssistant ? <StreamingStatus message={liveAssistant} /> : null}
                 {usage ? (
                   <div className="flex items-center justify-center gap-3 pb-2 text-[10.5px] text-faint">
                     <span>输入 {usage.input.toLocaleString()} tokens</span>
@@ -1369,6 +1373,46 @@ function MessageItem({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function StreamingStatus({ message }: { message: ChatMessage }) {
+  const [now, setNow] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const start = new Date(message.createdAt).getTime();
+  const elapsed = now !== null && Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : null;
+  const recentText = message.content.slice(-500);
+  const writing = /(撰写|报告|估值|整理|分析|生成)/.test(recentText);
+  const lastTool = [...message.parts]
+    .reverse()
+    .find((part) => part.type === 'tool');
+  const label = writing
+    ? '正在整理数据并撰写报告'
+    : lastTool
+      ? '正在处理工具返回结果'
+      : '正在生成回答';
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 pl-0 text-[11.5px] text-muted sm:pl-8">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-50" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+      </span>
+      <span className="font-medium text-ink">{label}</span>
+      <span className="text-faint">{elapsed === null ? '· 已连接，等待输出' : `· 已用 ${elapsed}s`}</span>
+      <span className="flex items-center gap-0.5 text-faint">
+        <span className="h-1 w-1 animate-bounce rounded-full bg-faint [animation-delay:0ms]" />
+        <span className="h-1 w-1 animate-bounce rounded-full bg-faint [animation-delay:120ms]" />
+        <span className="h-1 w-1 animate-bounce rounded-full bg-faint [animation-delay:240ms]" />
+      </span>
+      <span className="text-faint">可随时点击右下角停止</span>
     </div>
   );
 }
