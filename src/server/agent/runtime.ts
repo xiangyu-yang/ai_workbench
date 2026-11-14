@@ -430,7 +430,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       const result = await tool.execute(validated.value, { ...toolCtx, signal: controller.signal });
       const cap =
         call.name === 'run_skill_script' ? 12_000 : call.name === 'skill_read_file' ? 8_000 : call.name === 'web_search' ? 4_000 : 6_000;
-      return { ...result, content: truncate(result.content, cap) };
+      return { ...result, content: truncate(result.content, 100_000) };
     } catch (err) {
       return {
         content: `工具执行失败：${(err as Error).message || '未知错误'}`,
@@ -556,7 +556,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             role: 'tool',
             toolCallId: part.id,
             name: part.name,
-            content: part.output || part.summary || '',
+            content: truncate(part.output || part.summary || '', 8_000),
             isError: part.status === 'error' || part.status === 'denied',
           });
         }
@@ -988,7 +988,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
               role: 'tool',
               toolCallId: call.id,
               name: call.name,
-              content: cached.output || '',
+              content: truncate(cached.output || '', 8_000),
               isError: false,
             });
             send({
@@ -1031,7 +1031,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             role: 'tool',
             toolCallId: call.id,
             name: call.name,
-            content: toolResult.content,
+            content: truncate(toolResult.content, 8_000),
             isError: toolResult.isError,
           });
           send({

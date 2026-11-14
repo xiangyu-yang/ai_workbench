@@ -14,6 +14,7 @@ import {
 import { env } from '@/server/env';
 import { callMcpTool, getConnectorTools } from '@/server/mcp/manager';
 import { calculatorTool, readUrlTool, webSearchTool } from './builtin';
+import { memoryTools } from './memory';
 import { knowledgeSearchTool } from './knowledge';
 import { createTaskTool, completeTaskTool, updatePlanTool, updateStepTool } from './task';
 import { buildSkillTools } from './skill';
@@ -149,7 +150,7 @@ export async function buildToolset(params: {
 
   if (mode === 'plan') return { tools, instructions, hasDelegate: false, skills: [] };
 
-  const readonlyTools: RuntimeTool[] = [readUrlTool, calculatorTool];
+  const readonlyTools: RuntimeTool[] = [readUrlTool, calculatorTool, ...memoryTools];
   if (kbIds.length) readonlyTools.unshift(knowledgeSearchTool);
   if (env.TAVILY_API_KEY) readonlyTools.push(webSearchTool);
 
