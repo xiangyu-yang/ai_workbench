@@ -796,6 +796,9 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             });
           }
           if (repeatCount >= 3) {
+            part.status = 'ok';
+            part.summary = '重复调用已跳过';
+            part.output = '相同工具与参数已执行过，系统已阻止重复调用。';
             forceBreak = true;
             break;
           }
