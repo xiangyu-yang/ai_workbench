@@ -8,6 +8,9 @@ export async function GET(req: Request) {
     const auth = await requireApi('viewer');
     const url = new URL(req.url);
     const query = (url.searchParams.get('q') || '').trim();
+    const archivedParam = url.searchParams.get('archived');
+    const archived = archivedParam === '1' ? true : archivedParam === '0' ? false : null;
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || 40)));
     const db = await getDb();
     const rows = await db
       .select({
@@ -15,6 +18,7 @@ export async function GET(req: Request) {
         title: threads.title,
         expertId: threads.expertId,
         pinned: threads.pinned,
+        archived: threads.archived,
         lastMessageAt: threads.lastMessageAt,
       })
       .from(threads)
@@ -24,10 +28,11 @@ export async function GET(req: Request) {
           eq(threads.userId, auth.user.id),
           eq(threads.source, 'chat'),
           query ? ilike(threads.title, `%${query}%`) : undefined,
+          archived === null ? undefined : eq(threads.archived, archived),
         ),
       )
       .orderBy(desc(threads.pinned), desc(threads.lastMessageAt))
-      .limit(40);
+      .limit(limit);
     return json({ threads: rows });
   } catch (err) {
     return errorResponse(err);

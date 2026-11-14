@@ -13,6 +13,7 @@ import {
   ListChecks,
   LogOut,
   MessageSquare,
+  MoreHorizontal,
   PanelLeft,
   Plus,
   Plug,
@@ -27,6 +28,7 @@ import { Badge, Button } from '@/components/ui';
 import { cn, relativeTime } from '@/lib/utils';
 import { useToast } from '@/components/toast';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { ThreadManager } from '@/components/thread-manager';
 
 type RecentThread = { id: string; title: string; lastMessageAt: string };
 
@@ -86,6 +88,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [threadManagerOpen, setThreadManagerOpen] = React.useState(false);
 
   const section = pathname.split('/')[1] || 'chat';
 
@@ -197,7 +200,18 @@ export function AppShell({
           <span className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-faint">
             最近对话
           </span>
-          <span className="text-[10.5px] text-faint">{recent.length}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-[10.5px] text-faint">{recent.length}</span>
+            <button
+              type="button"
+              onClick={() => setThreadManagerOpen(true)}
+              className="rounded-md p-1 text-faint transition hover:bg-surface-3 hover:text-ink"
+              title="管理会话：批量归档或删除"
+              aria-label="管理会话"
+            >
+              <MoreHorizontal size={13} />
+            </button>
+          </div>
         </div>
         <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto pb-2">
           {recent.length === 0 ? (
@@ -374,6 +388,7 @@ export function AppShell({
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <ThreadManager open={threadManagerOpen} onClose={() => setThreadManagerOpen(false)} />
     </div>
   );
 }
@@ -390,7 +405,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
     setQuery('');
     setActive(0);
     setTimeout(() => inputRef.current?.focus(), 40);
-    fetch('/api/threads')
+    fetch('/api/threads?archived=0&limit=40')
       .then((res) => res.json())
       .then((data) => setThreads(data.threads || []))
       .catch(() => undefined);

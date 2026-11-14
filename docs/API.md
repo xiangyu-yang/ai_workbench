@@ -142,6 +142,7 @@ GET /api/tasks/{taskId}
 | GET/POST | `/api/knowledge` | 知识库 |
 | POST | `/api/knowledge/{id}/documents` | 上传并入库（multipart） |
 | POST | `/api/knowledge/{id}/search` | 召回测试 |
+| POST | `/api/threads/batch` | 批量归档/恢复/删除会话；body `{ids, action}` |
 | GET/POST | `/api/tasks` | 任务；创建时支持 `expertId` 与 `skillIds` |
 | GET/POST | `/api/apps` | 应用中心 |
 | POST | `/api/apps/{id}/open` | 记录最近使用并返回入口 |
