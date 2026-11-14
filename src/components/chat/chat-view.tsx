@@ -1184,6 +1184,10 @@ function MessageItem({
   const hasVisibleContent = message.parts.some(
     (part) => part.type === 'text' || part.type === 'tool' || part.type === 'artifact',
   );
+  const hasArtifact = message.parts.some((part) => part.type === 'artifact');
+  const lastLine = message.content.trim().split('\n').filter(Boolean).pop() || '';
+  const incompleteEnding =
+    hasArtifact && message.status === 'completed' && (/^#{1,6}\s+/.test(lastLine) || /[：:]$/.test(lastLine));
 
   if (message.role === 'user') {
     const text = message.parts
@@ -1352,6 +1356,15 @@ function MessageItem({
           }
           return null;
         })}
+
+        {incompleteEnding ? (
+          <div className="flex items-start gap-2 rounded-xl border border-accent/25 bg-accent/[0.05] px-3.5 py-3 text-[11.5px] leading-relaxed text-muted">
+            <FileText size={14} className="mt-0.5 shrink-0 text-accent-2" />
+            <p>
+              完整报告已写入交付物，聊天摘要在此处截断。点击下方交付物卡片即可继续阅读完整正文。
+            </p>
+          </div>
+        ) : null}
 
         {streaming && !hasVisibleContent ? (
           <div className="flex items-center gap-2 py-1 text-[12px] text-muted">
