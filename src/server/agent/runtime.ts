@@ -16,6 +16,7 @@ import {
   type ToolPart,
 } from '@/server/db/schema';
 import { audit } from '@/server/audit';
+import { createArtifact } from '@/server/artifacts';
 import { newId } from '@/server/ids';
 import { costOf, resolveModel, streamChat } from '@/server/llm/gateway';
 import { isOllamaProvider, ollamaNumCtx } from '@/server/llm/ollama';
@@ -247,6 +248,11 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     send({ type: 'skill', part });
   }
   const toolMap = new Map(toolset.tools.map((t) => [t.name, t]));
+  // 兼容模型常见的工具名颠倒写法，避免一次无效重试被展示成执行失败。
+  const readSkillFile = toolMap.get('skill_read_file');
+  if (readSkillFile && !toolMap.has('read_skill_file')) {
+    toolMap.set('read_skill_file', readSkillFile);
+  }
 
   let llmMessages: LlmMessage[] = [];
   let systemPrompt = '';
@@ -901,6 +907,94 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     } catch (err) {
       if (params.signal?.aborted) cancelled = true;
       else console.warn('[cuter] 最终收口失败', err);
+    }
+  }
+
+  // 股票报告常见问题：模型读完资料后只输出“开始撰写”就结束，没有正文或交付物。
+  // 这里做一次无工具收口，强制生成可读报告，避免界面看起来卡在过渡语。
+  const currentText = textOfParts(parts).trim();
+  const loadedStockSkill = toolset.skills.some((skill) => skill.name.includes('股票深度分析'));
+  const wroteArtifact = parts.some(
+    (part) => part.type === 'tool' && part.name === 'workspace_write' && part.status === 'ok',
+  );
+  const hasToolResult = parts.some((part) => part.type === 'tool' && part.status === 'ok');
+  const looksLikeProgressOnly =
+    currentText.length < 800 ||
+    /(开始撰写|现在撰写|正在撰写|接下来|然后生成完整研究报告)[。.!！]?$/.test(currentText);
+  if (
+    !cancelled &&
+    !errorMessage &&
+    loadedStockSkill &&
+    hasToolResult &&
+    !wroteArtifact &&
+    looksLikeProgressOnly
+  ) {
+    try {
+      let reportPart: TextPart | null = null;
+      const synthesis = await streamChat({
+        provider: resolved.provider,
+        model: resolved.modelId,
+        messages: [
+          ...llmMessages,
+          {
+            role: 'user',
+            content:
+              '你已完成数据获取。现在不要调用工具，直接输出最终的中文研究报告正文，1000-1800 字。必须包含：行情快照与量价诊断、基本面要点、估值锚点/三情景、主要风险与失效条件、数据截止和免责声明。不要只写“开始撰写”，不要复述工具参数。',
+          },
+        ],
+        temperature: expert?.temperature ?? 0.4,
+        maxTokens: 4096,
+        signal: params.signal,
+        onEvent: (event) => {
+          if (event.type === 'text') {
+            if (!reportPart) {
+              reportPart = { type: 'text', text: '' };
+              parts.push(reportPart);
+            }
+            reportPart.text += event.delta;
+            send({ type: 'text', delta: event.delta });
+            schedulePersist();
+          }
+        },
+      });
+      runIn += synthesis.usage.inputTokens;
+      runOut += synthesis.usage.outputTokens;
+      lastFinishReason = synthesis.finishReason;
+      if (synthesis.text && !reportPart) {
+        parts.push({ type: 'text', text: synthesis.text });
+      }
+      await persist('streaming');
+      const generated = textOfParts(parts).trim();
+      if (generated.length > 600 && !parts.some((part) => part.type === 'artifact')) {
+        const heading = /^#\s+(.+)$/m.exec(generated)?.[1]?.trim() || '股票分析报告';
+        const safeName = heading.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+        const name = safeName + '_' + new Date().toISOString().slice(0, 10) + '.md';
+        const artifact = await createArtifact({
+          orgId: params.orgId,
+          scopeId: params.threadId,
+          name,
+          relativePath: name,
+          content: generated,
+          mime: 'text/markdown',
+          taskId: params.taskId,
+          threadId: params.threadId,
+          messageId: assistant.id,
+        });
+        const artifactPart: MessagePart = {
+          type: 'artifact',
+          artifactId: artifact.id,
+          name: artifact.name,
+          mime: artifact.mime,
+          size: artifact.size,
+          kind: artifact.kind as 'document' | 'data' | 'code' | 'image' | 'other',
+        };
+        parts.push(artifactPart);
+        send({ type: 'artifact', artifact });
+        await persist('streaming');
+      }
+    } catch (err) {
+      if (params.signal?.aborted) cancelled = true;
+      else console.warn('[cuter] 股票报告收口失败', err);
     }
   }
 

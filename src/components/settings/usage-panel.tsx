@@ -145,13 +145,15 @@ export function UsagePanel({ quota }: { quota: number }) {
           <div className="mt-5 flex h-[160px] items-end gap-1.5">
             {recentDays.map((item) => {
               const total = item.inputTokens + item.outputTokens;
-              const height = Math.max(3, (total / maxDaily) * 100);
+              const height = Math.max(4, Math.round((total / maxDaily) * 130));
               return (
-                <div key={item.day} className="group relative flex flex-1 flex-col items-center gap-1">
-                  <div
-                    className="w-full rounded-t-[3px] bg-[linear-gradient(180deg,#7c6cff,#22d3ee)] opacity-70 transition group-hover:opacity-100"
-                    style={{ height: `${height}%` }}
-                  />
+                <div key={item.day} className="group relative flex h-full flex-1 flex-col items-center justify-end gap-1">
+                  <div className="flex w-full flex-1 items-end">
+                    <div
+                      className="w-full rounded-t-[3px] bg-[linear-gradient(180deg,#7c6cff,#22d3ee)] opacity-70 transition group-hover:opacity-100"
+                      style={{ height: `${height}px` }}
+                    />
+                  </div>
                   <span className="text-[8px] text-faint">{item.day.slice(5)}</span>
                   <div className="pointer-events-none absolute bottom-full z-10 mb-1 hidden w-max rounded-md border border-line bg-surface px-2 py-1 text-[9.5px] text-muted shadow-xl group-hover:block">
                     {item.day} · {formatNumber(total)} tokens · {formatUsd(item.costUsd)}

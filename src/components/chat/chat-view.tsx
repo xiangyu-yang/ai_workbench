@@ -147,9 +147,39 @@ export function ChatView({
   const abortRef = React.useRef<AbortController | null>(null);
   const mountedRef = React.useRef(true);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const shellRef = React.useRef<HTMLDivElement>(null);
+  const [artifactWidth, setArtifactWidth] = React.useState(520);
   const atBottomRef = React.useRef(true);
   const [atBottom, setAtBottom] = React.useState(true);
   const isNewThread = React.useRef(!initialThreadId);
+
+  React.useEffect(() => {
+    const saved = Number(window.localStorage.getItem('cuter.artifactWidth') || 0);
+    if (saved >= 360 && saved <= 900) setArtifactWidth(saved);
+  }, []);
+
+  const startArtifactResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = artifactWidth;
+    const maxWidth = Math.max(420, (shellRef.current?.getBoundingClientRect().width || window.innerWidth) - 420);
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = Math.min(maxWidth, Math.max(360, startWidth + (startX - moveEvent.clientX)));
+      setArtifactWidth(next);
+    };
+    const onUp = (upEvent: PointerEvent) => {
+      const next = Math.min(maxWidth, Math.max(360, startWidth + (startX - upEvent.clientX)));
+      window.localStorage.setItem('cuter.artifactWidth', String(next));
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   const activeArtifact = artifacts.find((item) => item.id === activeArtifactId) || null;
   const selectedExpert = experts.find((item) => item.id === expertId) || null;
@@ -722,7 +752,7 @@ export function ChatView({
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div ref={shellRef} className="flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
         <ChatHeader
           title={title}
@@ -850,14 +880,32 @@ export function ChatView({
       </div>
 
       {activeArtifact ? (
-        <div className="hidden w-[430px] shrink-0 xl:block">
-          <ArtifactPanel
-            artifact={activeArtifact}
-            artifacts={artifacts}
-            onSelect={setActiveArtifactId}
-            onClose={() => setActiveArtifactId(null)}
-          />
-        </div>
+        <>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="拖动调整交付物面板宽度"
+            onPointerDown={startArtifactResize}
+            onDoubleClick={() => {
+              setArtifactWidth(520);
+              window.localStorage.setItem('cuter.artifactWidth', '520');
+            }}
+            className="group hidden w-1 shrink-0 cursor-col-resize touch-none bg-line/40 transition hover:bg-accent/40 xl:block"
+          >
+            <div className="h-full w-px bg-transparent transition group-hover:bg-accent/60" />
+          </div>
+          <div
+            style={{ width: artifactWidth }}
+            className="hidden shrink-0 xl:block"
+          >
+            <ArtifactPanel
+              artifact={activeArtifact}
+              artifacts={artifacts}
+              onSelect={setActiveArtifactId}
+              onClose={() => setActiveArtifactId(null)}
+            />
+          </div>
+        </>
       ) : null}
 
       {activeArtifact ? (
