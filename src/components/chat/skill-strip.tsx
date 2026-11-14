@@ -18,6 +18,7 @@ export function SkillStrip({ parts, used }: { parts: SkillPart[]; used?: Set<str
         const meta = [
           `${part.name} v${part.version}`,
           part.selection === 'manual' ? '手动选择' : '跟随专家',
+          '已加载到专家上下文；调用技能文件/脚本后标记为已使用',
           part.fileCount ? `${part.fileCount} 个文件` : '',
           part.scriptCount ? `${part.scriptCount} 个脚本` : '',
           part.description || '',
@@ -53,7 +54,7 @@ export function SkillStrip({ parts, used }: { parts: SkillPart[]; used?: Set<str
                     : 'bg-surface-3 text-faint',
               )}
             >
-              {isUsed ? '已使用' : part.selection === 'manual' ? '手动' : '自动'}
+              {isUsed ? '已使用' : '已加载'}
             </span>
           </Link>
         );

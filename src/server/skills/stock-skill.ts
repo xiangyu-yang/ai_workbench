@@ -7,6 +7,7 @@ import {
   SCREEN_STOCKS_SCRIPT,
   STOCK_WATCHLIST,
   MARKET_DATA_REFERENCE,
+  MARKET_OVERVIEW_SCRIPT,
   VOLUME_PRICE_REFERENCE,
 } from './stock-data';
 
@@ -76,6 +77,16 @@ const STOCK_BODY = `# 股票深度分析与预测
 - 脚本输出代码、名称、行业、价格、涨跌幅、PE/PB、总市值、换手率；它只是候选池，不是买入建议。
 - 从候选池中选择最多 3 只，再调用 live_market_scan.py 做量价与基本面核验；不要对每只股票重复读取同一 reference。
 - 推荐结论必须写明筛选条件、数据截止、主要风险和“不构成投资建议”。
+
+### 2.6 大盘、指数与跨市场
+
+当用户问“大盘/市场/风格/跨市场”，先调用 scripts/market_overview.py：
+- 全市场：args ["--market","all","--days","120","--format","markdown"]
+- A 股：--market cn；港股：--market hk；美股：--market us
+- 输出主要指数、当日/20 日涨跌、MA20/60、量比与趋势。
+- 大盘分析必须结合估值、盈利周期、流动性与政策；单日涨跌不能直接外推。
+- 个股与大盘要分层：先大盘环境，再行业，再个股 α。
+- 若加载了“深度调研方法论”，优先读取其 references/evidence-standards.md，用多源取证、反方观点和来源审计；在 UI 中会标记该技能已使用。
 
 ### 3. 取证与数据审计
 
@@ -208,6 +219,7 @@ const STOCK_BODY = `# 股票深度分析与预测
 - scripts/fetch_fundamentals.py：A 股结构化财务快照（营收/利润/ROE/现金流/趋势）
 - scripts/screen_stocks.py：A 股候选池筛选（市值/PE/行业/排序）
 - scripts/live_market_scan.py：实时行情 + 量价诊断 + 技术面，一条命令产出
+- scripts/market_overview.py：A/H/US 主要指数、趋势与跨市场温度计
 - scripts/technical_scan.py：用户 CSV 的均线、RSI、MACD、ATR、布林带、回撤、支撑阻力
 - scripts/risk_position.py：仓位、止损、R 倍数、参数 VaR
 - assets/equity-research-template.md：完整研究报告模板
@@ -1229,6 +1241,7 @@ export const STOCK_SKILL: SkillDefinition = {
     { path: 'scripts/fetch_fundamentals.py', content: FUNDAMENTALS_SCRIPT },
     { path: 'scripts/screen_stocks.py', content: SCREEN_STOCKS_SCRIPT },
     { path: 'scripts/live_market_scan.py', content: LIVE_MARKET_SCAN_SCRIPT },
+    { path: 'scripts/market_overview.py', content: MARKET_OVERVIEW_SCRIPT },
     { path: 'scripts/technical_scan.py', content: TECHNICAL_SCRIPT },
     { path: 'scripts/risk_position.py', content: RISK_SCRIPT },
     { path: 'assets/equity-research-template.md', content: EQUITY_TEMPLATE },
