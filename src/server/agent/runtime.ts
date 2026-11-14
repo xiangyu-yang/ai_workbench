@@ -660,7 +660,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       if (message.role !== 'tool') return message;
       const cap =
         message.name === 'run_skill_script'
-          ? 6_000
+          ? 7_000
           : message.name === 'skill_read_file'
             ? 3_000
             : message.name === 'web_search'
@@ -1168,7 +1168,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           {
             role: 'user',
             content:
-              '你已完成数据获取。现在不要调用工具，直接输出最终的中文研究报告正文，1800-3000 字。必须包含：行情快照与量价诊断、基本面要点、估值锚点/三情景、主要风险与失效条件、数据截止和免责声明。不要只写“开始撰写”，不要复述工具参数。',
+              '你已完成数据获取。现在不要调用工具，直接输出最终的中文深度研究报告，3000-4500 字。必须包含：结论卡片、行情快照与量价诊断、生意模式/行业格局、护城河/管理层、财务质量、估值（PE 锚定/反向 DCF/相对估值/敏感性）、下季度与 12 个月情景预测、催化剂/风险表、技术面执行参考、反方观点/数据缺口、来源与免责声明。不要只写“开始撰写”，不要复述工具参数。',
           },
         ],
         temperature: expert?.temperature ?? 0.4,
