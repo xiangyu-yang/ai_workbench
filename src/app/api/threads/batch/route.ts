@@ -49,7 +49,7 @@ export async function POST(req: Request) {
         )
         .limit(1);
       if (active.length) {
-        throw new ApiError(409, '选中会话中有正在执行或等待审批的内容，请先停止后再删除', 'thread_busy');
+        throw new ApiError(409, '选中会话中有正在执行或等待审批的内容，请先点击「强制结束」后再删除', 'thread_busy');
       }
       await db.delete(messages).where(inArray(messages.threadId, ownedIds));
       await db.delete(attachments).where(inArray(attachments.threadId, ownedIds));

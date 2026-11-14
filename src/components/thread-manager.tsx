@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Archive, ArchiveRestore, CheckSquare, Loader2, MessageSquare, Search, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, CheckSquare, Loader2, MessageSquare, Search, Square, Trash2 } from 'lucide-react';
 import { Badge, Button, Modal } from '@/components/ui';
 import { useToast } from '@/components/toast';
 import { cn, relativeTime } from '@/lib/utils';
@@ -12,6 +12,7 @@ type ThreadItem = {
   title: string;
   lastMessageAt: string;
   archived: boolean;
+  busyStatus?: 'streaming' | 'awaiting_approval' | null;
 };
 
 type Tab = 'active' | 'archived';
@@ -32,6 +33,7 @@ export function ThreadManager({
   const [query, setQuery] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [stoppingId, setStoppingId] = React.useState<string | null>(null);
   const [error, setError] = React.useState('');
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
@@ -79,6 +81,24 @@ export function ThreadManager({
       else next.add(id);
       return next;
     });
+  };
+
+  const forceStop = async (item: ThreadItem) => {
+    if (!window.confirm(`强制结束「${item.title}」？正在执行或等待审批的内容会被取消。`)) return;
+    setStoppingId(item.id);
+    setError('');
+    try {
+      const response = await fetch(`/api/threads/${item.id}/stop`, { method: 'POST' });
+      const data = (await response.json()) as { error?: string; active?: boolean };
+      if (!response.ok) throw new Error(data.error || '强制结束失败');
+      toast(data.active ? '已强制结束该会话' : '会话状态已收敛为已停止');
+      await load(tab);
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setStoppingId(null);
+    }
   };
 
   const toggleAll = () => {
@@ -131,7 +151,7 @@ export function ThreadManager({
       open={open}
       onClose={onClose}
       title="管理会话"
-      description="批量归档、恢复或删除左侧会话；删除后消息、交付物与运行记录会一并清理。"
+      description="批量归档、恢复或删除左侧会话；执行中会话可先强制结束。删除后消息、交付物与运行记录会一并清理。"
       size="lg"
       footer={
         confirmDelete ? (
@@ -253,32 +273,72 @@ export function ThreadManager({
             {visible.map((item) => {
               const checked = selected.has(item.id);
               const current = item.id === currentThreadId;
+              const busyStatus = item.busyStatus || null;
               return (
-                <label
+                <div
                   key={item.id}
                   className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition',
+                    'flex items-center gap-2 rounded-lg border border-l-2 px-3 py-2.5 transition',
                     checked
-                      ? 'border-accent/40 bg-accent/[0.06]'
-                      : 'border-line/60 bg-surface-2/40 hover:border-line-strong',
+                      ? 'border-accent/40 border-l-accent bg-accent/[0.06]'
+                      : busyStatus === 'awaiting_approval'
+                        ? 'border-warning/30 border-l-warning/60 bg-warning/[0.05]'
+                        : busyStatus === 'streaming'
+                          ? 'border-cyan/25 border-l-cyan/60 bg-cyan/[0.04]'
+                          : 'border-line/60 border-l-transparent bg-surface-2/40 hover:border-line-strong',
                   )}
                 >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggle(item.id)}
-                    className="h-3.5 w-3.5 shrink-0 accent-[#7c6cff]"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate text-[12.5px] font-medium text-ink">{item.title}</span>
-                      {current ? <Badge variant="outline" className="shrink-0 scale-90">当前</Badge> : null}
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(item.id)}
+                      className="h-3.5 w-3.5 shrink-0 accent-[#7c6cff]"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-[12.5px] font-medium text-ink">{item.title}</span>
+                        {current ? <Badge variant="outline" className="shrink-0 scale-90">当前</Badge> : null}
+                      </span>
+                      <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-faint">
+                        <span>{relativeTime(item.lastMessageAt)}</span>
+                        <span>·</span>
+                        <span>{item.archived ? '已归档' : '进行中'}</span>
+                        {busyStatus ? (
+                          <>
+                            <span>·</span>
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-1',
+                                busyStatus === 'awaiting_approval' ? 'text-warning' : 'text-cyan',
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'h-1.5 w-1.5 rounded-full',
+                                  busyStatus === 'awaiting_approval' ? 'bg-warning' : 'bg-cyan',
+                                )}
+                              />
+                              {busyStatus === 'awaiting_approval' ? '等待审批' : '正在执行'}
+                            </span>
+                          </>
+                        ) : null}
+                      </span>
                     </span>
-                    <span className="mt-0.5 block text-[10.5px] text-faint">
-                      {relativeTime(item.lastMessageAt)} · {item.archived ? '已归档' : '进行中'}
-                    </span>
-                  </span>
-                </label>
+                  </label>
+                  {busyStatus ? (
+                    <button
+                      type="button"
+                      onClick={() => void forceStop(item)}
+                      disabled={stoppingId === item.id}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-warning/30 bg-warning/[0.06] px-2 py-1 text-[10.5px] text-warning transition hover:bg-warning/10 disabled:opacity-50"
+                      title="强制结束该会话的当前执行"
+                    >
+                      {stoppingId === item.id ? <Loader2 size={11} className="animate-spin" /> : <Square size={10} />}
+                      强制结束
+                    </button>
+                  ) : null}
+                </div>
               );
             })}
           </div>

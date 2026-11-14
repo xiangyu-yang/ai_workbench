@@ -1,7 +1,7 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { requirePageAuth } from '@/server/auth/session';
 import { getDb } from '@/server/db/client';
-import { modelProviders, threads } from '@/server/db/schema';
+import { messages, modelProviders, threads } from '@/server/db/schema';
 import { AppShell } from '@/components/app-shell';
 import { ensureScheduler } from '@/server/tasks/runner';
 import type { Role } from '@/server/db/schema';
@@ -34,6 +34,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .limit(1),
   ]);
 
+  const statusRows = recentRows.length
+    ? await db
+        .select({ threadId: messages.threadId, status: messages.status })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.orgId, auth.org.id),
+            inArray(messages.threadId, recentRows.map((row) => row.id)),
+            inArray(messages.status, ['streaming', 'awaiting_approval']),
+          ),
+        )
+    : [];
+  const busyByThread = new Map<string, 'streaming' | 'awaiting_approval'>();
+  for (const row of statusRows) {
+    const current = busyByThread.get(row.threadId);
+    if (row.status === 'awaiting_approval' || !current) {
+      busyByThread.set(row.threadId, row.status as 'streaming' | 'awaiting_approval');
+    }
+  }
+
   return (
     <AppShell
       user={{
@@ -49,6 +69,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         id: row.id,
         title: row.title,
         lastMessageAt: row.lastMessageAt.toISOString(),
+        busyStatus: busyByThread.get(row.id) || null,
       }))}
       demoMode={providerRows.length === 0}
     >

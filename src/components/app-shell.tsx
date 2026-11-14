@@ -30,7 +30,12 @@ import { useToast } from '@/components/toast';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { ThreadManager } from '@/components/thread-manager';
 
-type RecentThread = { id: string; title: string; lastMessageAt: string };
+type RecentThread = {
+  id: string;
+  title: string;
+  lastMessageAt: string;
+  busyStatus?: 'streaming' | 'awaiting_approval' | null;
+};
 
 type ShellUser = {
   id: string;
@@ -222,19 +227,44 @@ export function AppShell({
             <div className="space-y-0.5">
               {recent.map((thread) => {
                 const active = pathname === `/chat/${thread.id}`;
+                const busy = thread.busyStatus || null;
                 return (
                   <Link
                     key={thread.id}
                     href={`/chat/${thread.id}`}
+                    title={busy === 'awaiting_approval' ? '等待审批' : busy === 'streaming' ? '正在执行' : thread.title}
                     className={cn(
-                      'flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-[12px] transition-colors',
+                      'flex items-center gap-2 rounded-lg border-l-2 px-2.5 py-[7px] text-[12px] transition-colors',
+                      busy === 'awaiting_approval'
+                        ? 'border-warning/60 bg-warning/[0.06]'
+                        : busy === 'streaming'
+                          ? 'border-cyan/60 bg-cyan/[0.05]'
+                          : 'border-transparent',
                       active
                         ? 'bg-surface-3 text-ink'
                         : 'text-muted hover:bg-surface-2 hover:text-ink',
                     )}
                   >
-                    <MessageSquare size={13} className="shrink-0 text-faint" />
+                    <MessageSquare
+                      size={13}
+                      className={cn(
+                        'shrink-0',
+                        busy === 'awaiting_approval'
+                          ? 'text-warning'
+                          : busy === 'streaming'
+                            ? 'text-cyan'
+                            : 'text-faint',
+                      )}
+                    />
                     <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+                    {busy ? (
+                      <span
+                        className={cn(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          busy === 'awaiting_approval' ? 'bg-warning' : 'bg-cyan',
+                        )}
+                      />
+                    ) : null}
                     <span className="shrink-0 text-[10px] text-faint">
                       {relativeTime(thread.lastMessageAt)}
                     </span>

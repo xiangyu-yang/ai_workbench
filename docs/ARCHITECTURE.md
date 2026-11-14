@@ -138,6 +138,7 @@ orgs ─┬─ memberships ── users ── sessions
 
 - **消息用 parts 而非纯文本**：`parts: [{type:'text'|'reasoning'|'tool'|'artifact'|'citation'}]`，天然支持工具卡片、思考过程、交付物与引用回放。
 - **Run 与 Message 分离**：一次用户消息可能触发多次模型调用与审批恢复；Run 记录每次执行的成本、延迟与错误。
+- **会话运行态**：线程列表返回 `busyStatus`（streaming/awaiting_approval），侧栏与管理弹窗用青色/琥珀色标记；管理弹窗可强制结束当前运行，随后允许删除。
 - **会话管理**：`threads.archived` 控制归档；侧栏管理弹窗支持批量归档/恢复/删除，删除前检查运行/审批状态，操作写审计。
 - **技能模式升级**：技能 manifest 可声明 `requiresExecution`；手动选择后在问答/规划模式发送会自动升级为执行，服务端同样兜底。
 - **Run Manager**：对话 Run 与 HTTP 请求解耦，SSE 断开不会取消生成；显式 `stop` 通过 messageId 触发 AbortController。消息每 1.2s 持久化，页面返回后轮询消息快照追平。

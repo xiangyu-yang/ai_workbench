@@ -1,6 +1,6 @@
-import { and, desc, eq, ilike } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
-import { threads } from '@/server/db/schema';
+import { messages, threads } from '@/server/db/schema';
 import { errorResponse, json, requireApi } from '@/server/http';
 
 export async function GET(req: Request) {
@@ -33,7 +33,31 @@ export async function GET(req: Request) {
       )
       .orderBy(desc(threads.pinned), desc(threads.lastMessageAt))
       .limit(limit);
-    return json({ threads: rows });
+    const statusRows = rows.length
+      ? await db
+          .select({ threadId: messages.threadId, status: messages.status })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.orgId, auth.org.id),
+              inArray(messages.threadId, rows.map((row) => row.id)),
+              inArray(messages.status, ['streaming', 'awaiting_approval']),
+            ),
+          )
+      : [];
+    const statusByThread = new Map<string, 'streaming' | 'awaiting_approval'>();
+    for (const row of statusRows) {
+      const current = statusByThread.get(row.threadId);
+      if (row.status === 'awaiting_approval' || !current) {
+        statusByThread.set(row.threadId, row.status as 'streaming' | 'awaiting_approval');
+      }
+    }
+    return json({
+      threads: rows.map((row) => ({
+        ...row,
+        busyStatus: statusByThread.get(row.id) || null,
+      })),
+    });
   } catch (err) {
     return errorResponse(err);
   }
