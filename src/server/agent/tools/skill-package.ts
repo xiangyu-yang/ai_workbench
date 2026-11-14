@@ -155,9 +155,9 @@ export function buildSkillPackageTools(
             summary: file.path,
           };
         }
-        const content = file.content.slice(0, 8_000);
+        const content = file.content.slice(0, 30_000);
         return {
-          content: `文件：${file.path}\n\n${content}${file.content.length > 8_000 ? '\n\n（内容已截断）' : ''}`,
+          content: `文件：${file.path}\n\n${content}${file.content.length > 30_000 ? '\n\n（内容已截断）' : ''}`,
           summary: file.path,
         };
       },

@@ -88,7 +88,7 @@ export const readUrlTool: RuntimeTool = {
     const titleMatch = result.text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const title = titleMatch ? stripHtml(titleMatch[1]).slice(0, 120) : '';
     return {
-      content: `<untrusted_data type="web_page" url="${result.finalUrl}">\n${truncate(text, 6_000)}\n</untrusted_data>`,
+      content: `<untrusted_data type="web_page" url="${result.finalUrl}">\n${truncate(text, 20_000)}\n</untrusted_data>`,
       summary: `${title || '网页'} · ${(text.length / 1000).toFixed(1)}k 字`,
     };
   },
