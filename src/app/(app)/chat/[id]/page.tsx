@@ -14,6 +14,7 @@ import {
   threads,
 } from '@/server/db/schema';
 import { ChatView } from '@/components/chat/chat-view';
+import { reconcileApprovalParts } from '@/server/agent/message-parts';
 import { listSelectableSkills } from '@/server/skills/selectable';
 import type { ChatMessage, ChatPart } from '@/lib/chat-types';
 
@@ -111,13 +112,18 @@ export default async function ChatThreadPage({
   );
   const launchedApp = appRows[0] || null;
 
+  const pendingApprovalIds = new Set(approvalRows.map((row) => row.id));
   const expert = expertRows.find((item) => item.id === thread.expertId);
   const chatMessages: ChatMessage[] = messageRows
     .filter((message) => message.role !== 'system')
     .map((message) => ({
       id: message.id,
       role: message.role as 'user' | 'assistant',
-      parts: (message.parts || []) as ChatPart[],
+      parts: reconcileApprovalParts(
+        (message.parts || []) as ChatPart[],
+        message.status,
+        pendingApprovalIds,
+      ) as ChatPart[],
       content: message.content,
       status: message.status,
       createdAt: message.createdAt.toISOString(),

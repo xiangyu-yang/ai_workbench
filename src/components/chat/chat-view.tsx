@@ -655,6 +655,36 @@ export function ChatView({
     toast('已停止生成');
   };
 
+  const refreshThread = React.useCallback(async () => {
+    const id = threadIdRef.current;
+    if (!id) return;
+    try {
+      const response = await fetch(`/api/threads/${id}/messages`, { cache: 'no-store' });
+      if (!response.ok) return;
+      const data = (await response.json()) as {
+        messages?: ChatMessage[];
+        artifacts?: ArtifactInfo[];
+      };
+      if (Array.isArray(data.messages)) {
+        setMessages(data.messages);
+        const lastAssistant = [...data.messages]
+          .reverse()
+          .find((message) => message.role === 'assistant');
+        if (lastAssistant) assistantRef.current = lastAssistant.id;
+        setStreaming(data.messages.some((message) => message.status === 'streaming'));
+      }
+      if (data.artifacts?.length) {
+        setArtifacts((prev) => {
+          const byId = new Map(prev.map((item) => [item.id, item]));
+          for (const item of data.artifacts!) byId.set(item.id, item);
+          return [...byId.values()];
+        });
+      }
+    } catch {
+      /* 同步失败时保留当前画面，下次轮询继续 */
+    }
+  }, []);
+
   const decideApproval = async (approvalId: string, decision: 'approved' | 'denied') => {
     patchAssistant((message) => ({
       ...message,
@@ -684,6 +714,9 @@ export function ChatView({
         router.refresh();
         return;
       }
+      if (!data.ready) {
+        await refreshThread();
+      }
       if (data.ready && data.messageId) {
         setStreaming(true);
         const controller = new AbortController();
@@ -701,6 +734,7 @@ export function ChatView({
         await consume(resumeResponse);
       }
     } catch (err) {
+      await refreshThread();
       toast((err as Error).message, { variant: 'error' });
       setStreaming(false);
     } finally {
@@ -1319,10 +1353,14 @@ function MessageItem({
             );
           }
           if (part.type === 'tool') {
+            const effectivePart =
+              part.status === 'pending_approval' && message.status !== 'awaiting_approval'
+                ? { ...part, status: 'denied' as const, summary: '审批已失效，消息已结束' }
+                : part;
             return (
               <ToolCard
                 key={`tool-${part.id}`}
-                part={part}
+                part={effectivePart}
                 approvalRisk={part.approvalId ? approvalRisks[part.approvalId] : undefined}
                 onApprove={(id) => onDecide(id, 'approved')}
                 onDeny={(id) => onDecide(id, 'denied')}
