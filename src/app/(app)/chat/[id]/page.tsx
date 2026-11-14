@@ -14,7 +14,7 @@ import {
   threads,
 } from '@/server/db/schema';
 import { ChatView } from '@/components/chat/chat-view';
-import { reconcileApprovalParts } from '@/server/agent/message-parts';
+import { compactMessageParts, reconcileApprovalParts } from '@/server/agent/message-parts';
 import { listSelectableSkills } from '@/server/skills/selectable';
 import type { ChatMessage, ChatPart } from '@/lib/chat-types';
 
@@ -119,10 +119,12 @@ export default async function ChatThreadPage({
     .map((message) => ({
       id: message.id,
       role: message.role as 'user' | 'assistant',
-      parts: reconcileApprovalParts(
-        (message.parts || []) as ChatPart[],
-        message.status,
-        pendingApprovalIds,
+      parts: compactMessageParts(
+        reconcileApprovalParts(
+          (message.parts || []) as ChatPart[],
+          message.status,
+          pendingApprovalIds,
+        ),
       ) as ChatPart[],
       content: message.content,
       status: message.status,

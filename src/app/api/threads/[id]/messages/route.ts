@@ -1,7 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
 import { approvals, artifacts, messages, threads, type MessagePart } from '@/server/db/schema';
-import { reconcileApprovalParts } from '@/server/agent/message-parts';
+import { compactMessageParts, reconcileApprovalParts } from '@/server/agent/message-parts';
 import { ApiError, errorResponse, json, requireApi } from '@/server/http';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -62,10 +62,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       {
         messages: messageRows.map((message) => ({
           ...message,
-          parts: reconcileApprovalParts(
-            (message.parts || []) as MessagePart[],
-            message.status,
-            pendingIds,
+          parts: compactMessageParts(
+            reconcileApprovalParts(
+              (message.parts || []) as MessagePart[],
+              message.status,
+              pendingIds,
+            ),
           ),
         })),
         approvals: approvalRows,

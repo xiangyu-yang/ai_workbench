@@ -917,6 +917,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             part.summary = '报告已写入交付物，跳过重复取数';
             part.output = '完整报告已写入交付物，不再重复扫描或读取资料。';
             loopGuard = true;
+            forceBreak = true;
             continue;
           }
           if (stockResearch && skillReadSucceeded && isSkillRead) {
@@ -924,6 +925,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             part.summary = '已读取必要参考资料，跳过重复读取';
             part.output = '本轮已读取过参考资料；live_market_scan 已包含标准分析所需数据，请直接完成报告。';
             loopGuard = true;
+            forceBreak = true;
             continue;
           }
           if (stockResearch && !multiStockRequest && liveScanSucceeded && isLiveScan) {
@@ -931,6 +933,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             part.summary = '已获取该标的行情，跳过重复扫描';
             part.output = '单标的研究只需要扫描一次行情；请直接基于已有数据完成报告。';
             loopGuard = true;
+            forceBreak = true;
             llmMessages.push({
               role: 'user',
               content: '当前是单标的研究，请不要重复调用 live_market_scan，直接完成报告。',
