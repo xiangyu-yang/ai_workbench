@@ -931,6 +931,11 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   ) {
     try {
       let reportPart: TextPart | null = null;
+      if (textOfParts(parts).trim()) {
+        const separator = '\n\n';
+        parts.push({ type: 'text', text: separator });
+        send({ type: 'text', delta: separator });
+      }
       const synthesis = await streamChat({
         provider: resolved.provider,
         model: resolved.modelId,
@@ -964,37 +969,50 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
         parts.push({ type: 'text', text: synthesis.text });
       }
       await persist('streaming');
-      const generated = textOfParts(parts).trim();
-      if (generated.length > 600 && !parts.some((part) => part.type === 'artifact')) {
-        const heading = /^#\s+(.+)$/m.exec(generated)?.[1]?.trim() || '股票分析报告';
-        const safeName = heading.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
-        const name = safeName + '_' + new Date().toISOString().slice(0, 10) + '.md';
-        const artifact = await createArtifact({
-          orgId: params.orgId,
-          scopeId: params.threadId,
-          name,
-          relativePath: name,
-          content: generated,
-          mime: 'text/markdown',
-          taskId: params.taskId,
-          threadId: params.threadId,
-          messageId: assistant.id,
-        });
-        const artifactPart: MessagePart = {
-          type: 'artifact',
-          artifactId: artifact.id,
-          name: artifact.name,
-          mime: artifact.mime,
-          size: artifact.size,
-          kind: artifact.kind as 'document' | 'data' | 'code' | 'image' | 'other',
-        };
-        parts.push(artifactPart);
-        send({ type: 'artifact', artifact });
-        await persist('streaming');
-      }
     } catch (err) {
       if (params.signal?.aborted) cancelled = true;
       else console.warn('[cuter] 股票报告收口失败', err);
+    }
+  }
+
+  // 只要股票工具已跑完、模型给出了正文但没有写文件，就自动落一个可预览的 Markdown 交付物。
+  const finalStockText = textOfParts(parts).trim();
+  if (
+    !cancelled &&
+    !errorMessage &&
+    loadedStockSkill &&
+    !wroteArtifact &&
+    !parts.some((part) => part.type === 'artifact') &&
+    finalStockText.length > 600
+  ) {
+    try {
+      const artifactText = finalStockText.replace(/(^|[^\n])(#{1,3}\s+)/g, '$1\n\n$2').trim();
+      const heading = /#{1,3}\s*([^\n#]{2,100})/.exec(artifactText)?.[1]?.trim() || '股票分析报告';
+      const safeName = heading.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+      const name = safeName + '_' + new Date().toISOString().slice(0, 10) + '.md';
+      const artifact = await createArtifact({
+        orgId: params.orgId,
+        scopeId: params.threadId,
+        name,
+        relativePath: name,
+        content: artifactText,
+        mime: 'text/markdown',
+        taskId: params.taskId,
+        threadId: params.threadId,
+        messageId: assistant.id,
+      });
+      parts.push({
+        type: 'artifact',
+        artifactId: artifact.id,
+        name: artifact.name,
+        mime: artifact.mime,
+        size: artifact.size,
+        kind: artifact.kind as 'document' | 'data' | 'code' | 'image' | 'other',
+      });
+      send({ type: 'artifact', artifact });
+      await persist('streaming');
+    } catch (err) {
+      console.warn('[cuter] 自动保存股票报告失败', err);
     }
   }
 
