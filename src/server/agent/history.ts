@@ -6,7 +6,7 @@ import { attachments, messages, type MessagePart } from '@/server/db/schema';
 import { DATA_DIR } from '@/server/env';
 import type { LlmMessage, UserContentPart } from '@/server/llm/types';
 
-const MAX_TOTAL_CHARS = 18_000;
+const MAX_TOTAL_CHARS = 24_000;
 
 export function textOfParts(parts: MessagePart[]): string {
   return parts

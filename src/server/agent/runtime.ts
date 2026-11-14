@@ -292,7 +292,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
 
   // 自动召回（仅首轮，减少后续延迟）
   const localHistoryChars = isOllamaProvider(resolved.provider)
-    ? Math.max(4_000, Math.floor(ollamaNumCtx() * 0.45))
+    ? Math.max(4_000, Math.floor(ollamaNumCtx() * 0.55))
     : undefined;
   const preHistory = await buildHistory({
     orgId: params.orgId,
@@ -660,9 +660,9 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       if (message.role !== 'tool') return message;
       const cap =
         message.name === 'run_skill_script'
-          ? 7_000
+          ? 8_000
           : message.name === 'skill_read_file'
-            ? 3_000
+            ? 2_500
             : message.name === 'web_search'
               ? 3_000
               : 2_500;
@@ -940,7 +940,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           if (
             stockResearch &&
             isSkillRead &&
-            (skillReadPaths.has(skillReadPath) || skillReadPaths.size >= 3)
+            (skillReadPaths.has(skillReadPath) || skillReadPaths.size >= 4)
           ) {
             part.status = 'ok';
             part.summary = '已读取必要参考资料，跳过重复读取';
