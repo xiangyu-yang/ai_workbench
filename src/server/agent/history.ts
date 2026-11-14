@@ -152,6 +152,36 @@ export async function buildHistory(params: {
     trimmed.unshift(msg);
   }
   while (trimmed.length && trimmed[0].role === 'tool') trimmed.shift();
+
+  // 超出窗口的旧对话不直接消失：生成一个抽取式摘要，保留用户目标、
+  // 关键结论和待办；完整原文仍可通过 history_search 检索。
+  const dropped = result.slice(0, Math.max(0, result.length - trimmed.length));
+  const summaryLines: string[] = [];
+  let summaryChars = 0;
+  for (const message of dropped) {
+    if (message.role === 'user') {
+      const content = typeof message.content === 'string'
+        ? message.content
+        : message.content.map((part) => (part.type === 'text' ? part.text : '[图片]')).join(' ');
+      const text = `用户：${content.replace(/\s+/g, ' ').slice(0, 240)}`;
+      if (summaryChars + text.length > 1_600) break;
+      summaryLines.push(text);
+      summaryChars += text.length;
+    } else if (message.role === 'assistant' && message.content.trim()) {
+      const text = `助手结论：${message.content.replace(/\s+/g, ' ').slice(0, 320)}`;
+      if (summaryChars + text.length > 1_600) break;
+      summaryLines.push(text);
+      summaryChars += text.length;
+    }
+  }
+  if (summaryLines.length >= 2) {
+    trimmed.unshift({
+      role: 'system',
+      content:
+        '【较早对话摘要（自动压缩）】以下内容来自已滑出窗口的对话；需要精确原文、数字或报告时用 history_search 检索。\n' +
+        summaryLines.join('\n'),
+    });
+  }
   return trimmed;
 }
 
