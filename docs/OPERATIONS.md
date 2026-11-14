@@ -49,7 +49,7 @@ npm run db:seed
 - Ollama 连续 180 秒无输出会中断并返回明确错误（`OLLAMA_IDLE_TIMEOUT_MS` 可调），避免界面无限等待。
 - 单机 PGlite 模式下调度器随 Web 进程启动（首次页面/API 访问触发）。若长时间无流量，定时任务会延迟到下一次请求；需要严格按时执行请使用 PostgreSQL + 独立 Worker。
 - 单进程任务并发由 `TASK_CONCURRENCY` 控制；LLM 限流在供应商侧，必要时在网关层加队列。
-- 重启恢复：启动后 15 分钟以上仍处于 `running/planning` 的任务会被重置为 `queued`。
+- 重启恢复：启动后回收本实例遗留的 `running` 任务；运行期间每分钟扫描超过 10 分钟无锁心跳的 `running/planning` 任务，写 `task.recovered` 事件后重新排队。
 
 ## 5. 备份与恢复
 
@@ -73,6 +73,8 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 ### 交付物
 `DATA_DIR/workspaces/` 为交付物，`DATA_DIR/uploads/` 为知识库原始文件与对话附件。多副本部署需共享存储（NFS/CephFS）或替换为 S3 适配器。
 
+消息 `parts` 现在会保留完整工具结果（单次最多约 100k 字符）和报告文本，数据库与备份体积会相应增长；建议按组织保留策略归档旧会话，并监控 `messages`、`runs`、`artifacts` 的增长速度。
+
 ## 6. 密钥与轮换
 
 | 密钥 | 影响 | 轮换方式 |
@@ -94,19 +96,22 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 ## 本地 Ollama 排障
 
 - 平台会自动识别 `11434` 端口并切换到 Ollama 原生 `/api/chat`，也可在「设置 → 模型供应商」显式选择「Ollama 本地（原生）」。
-- 默认 `OLLAMA_NUM_CTX=16384`。Qwen3 / DeepSeek-R1 等思考模型在上下文或输出预算不足时可能只产出思考、没有正文；平台会强制一次无工具收口并给出明确提示。
+- 默认 `OLLAMA_NUM_CTX=32768`。Qwen3 / DeepSeek-R1 等思考模型在上下文或输出预算不足时可能只产出思考、没有正文；平台会强制一次无工具收口并给出明确提示。
 - 默认 `OLLAMA_THINK=false`，优先保证最终回答稳定；需要展示思考过程时设为 `true`。
 - `OLLAMA_KEEP_ALIVE=30m` 减少 30B 级模型反复加载。修改后重启 Web 进程。
-- 用 `ollama ps` 确认 CONTEXT 是否为预期值；显存不足时降低 `OLLAMA_NUM_CTX`，或换更小的量化模型。
+- `OLLAMA_IDLE_TIMEOUT_MS=180000`：连续 180 秒无输出会中断并返回明确错误，避免界面无限等待。
+- 用 `ollama ps` 确认 CONTEXT 是否为 32768；显存不足时降低 `OLLAMA_NUM_CTX`，或换更小的量化模型。长对话由滑动窗口摘要与 `history_search` / `evidence_search` / `evidence_read` 维持局部记忆，不应通过无限提高上下文解决。
 - 若仍返回空内容，请记录模型名、模式（问答/执行/任务）与 Ollama 日志，平台会保留明确的 finish_reason 诊断。
 
 ## 股票行情与专家
 
 - `Atlas 首席策略官` 由 `npm run db:seed-stock-expert` 幂等安装；新组织注册时自动创建，并绑定股票、深度研究、数据分析三个技能。
-- 股票技能使用 `fetch_market_data.py` / `live_market_scan.py` 拉取腾讯公开行情；A 股失败时回退东方财富 K 线。需要 Web/Worker 具备访问 `qt.gtimg.cn`、`web.ifzq.gtimg.cn`、`push2his.eastmoney.com` 的出站网络。
-- 股票研究禁止通过 read_url / http_request 抓取财经网页；港股/美股没有结构化财务数据时标注“未获取”，不编造财务数字。
+- 股票技能使用 `fetch_market_data.py` / `live_market_scan.py` 拉取腾讯公开行情；A 股基本面来自东方财富结构化接口；需要 Web/Worker 具备访问 `qt.gtimg.cn`、`web.ifzq.gtimg.cn`、`push2his.eastmoney.com`、`datacenter.eastmoney.com` 的出站网络。
+- 多标的推荐先走 `screen_stocks.py`（人工维护的龙头观察池，不是全市场量化筛选）；大盘/指数/跨市场走 `market_overview.py`；单股再走 `live_market_scan.py`。
+- 股票研究禁止通过 `read_url` / `http_request` 抓取财经网页；联网搜索仅在配置 `TAVILY_API_KEY` 时开放，并用于新闻/公告/催化剂，不允许用搜索结果补财务数字。港股/美股没有结构化财务数据时标注“未获取”，不编造财务数字。
 - 行情接口可能限流或变更；脚本失败时应让用户上传 CSV，禁止模型编造当日数据。
-- 输出必须包含数据截止日、来源、5/20 日量比口径、量价组合与风险提示；不构成投资建议。
+- 输出必须包含数据截止日、来源、5/20 日量比口径、量价组合、情景与风险提示；不构成投资建议。
+- 工具完整结果保留在消息 `parts` 中，模型侧只接收摘要；需要复盘时用 `evidence_search/evidence_read`，不要要求用户重发或重新抓取网页。
 
 ## 8. 故障排查
 
@@ -117,7 +122,10 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 | 流式输出被一次性返回 | 反向代理缓冲 | Nginx `proxy_buffering off`、`X-Accel-Buffering: no`（已内置）、读超时 ≥ 600s |
 | 模型 401/429 | 供应商密钥/配额 | 设置页测试连接；网关对 429/5xx 已重试一次 |
 | 工具调用总在等审批 | 专家工具策略为 `dangerous`/`always` | 在专家编辑器中调整；审批记录在设置 → 审计 |
-| 任务卡在 running | Worker 崩溃/被杀 | 等待 15 分钟自动恢复，或手动 `UPDATE tasks SET status='queued', locked_by=NULL WHERE id=...` |
+| 任务卡在 running | Worker 崩溃/被杀 | 等待约 10 分钟无心跳自动回收，或手动 `UPDATE tasks SET status='queued', locked_by=NULL WHERE id=...` |
+| 切换会话后仍出现审批框 | 消息 parts 残留旧的 `pending_approval` | 刷新会话触发审批对账；服务端会将已结束/已处理审批收敛为失效 |
+| 聊天区停在报告标题但无后续 | 摘要被截断，完整正文已写入交付物 | 打开交付物卡片查看完整报告；服务端会自动生成 Markdown 交付物 |
+| 长对话忘记早先结论 | 滑动窗口只保留最近原文 | 让模型用 `history_search` 检索旧结论；精确工具数字用 `evidence_search/evidence_read` |
 | MCP 连接失败 | stdio 被禁用、命令不存在、URL 不可达 | 查看连接器卡片错误；本地验证 `node scripts/demo-mcp.mjs` |
 | 知识库检索无结果 | 文档处理失败、嵌入维度不一致 | 文档列表查看状态；召回测试；必要时重传 |
 | `quota_exceeded` (402) | 月度 token 配额 | 设置 → 组织调整配额 |

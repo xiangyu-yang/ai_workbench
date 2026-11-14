@@ -124,10 +124,10 @@ GET /api/tasks/{taskId}
 | POST | `/api/auth/login` | 登录 |
 | POST | `/api/chat` | SSE 流式对话；body 支持 `expertId`、`mode`、`skillIds`（null=自动 / []=不使用 / 列表=手动） |
 | POST | `/api/chat/stop` | 按 `messageId` 中断生成 |
-| GET | `/api/threads/{id}/messages` | 消息/审批/交付物快照，用于离开页面后追平流式输出 |
+| GET | `/api/threads/{id}/messages` | 消息、审批与交付物快照；用于离开页面后追平流式输出；返回前会自动对账失效的 `pending_approval` 工具 |
 | POST | `/api/chat/resume` | 审批后恢复 |
 | PATCH | `/api/approvals/{id}` | 批准 / 拒绝 |
-| GET/PATCH/DELETE | `/api/threads[/{id}]` | 会话 |
+| GET/PATCH/DELETE | `/api/threads[/{id}]` | 会话；GET 支持 `q`、`archived=0/1`、`limit=1..100` |
 | GET/POST | `/api/experts` | 专家 |
 | GET/PATCH/DELETE | `/api/experts/{id}` | 专家详情 |
 | GET/POST | `/api/skills` | 技能（标准技能包） |
@@ -158,6 +158,47 @@ GET /api/tasks/{taskId}
 | GET | `/api/audit` | 审计日志（管理员） |
 | GET | `/api/health` | 健康检查（公开） |
 | GET | `/api/metrics` | Prometheus 指标（可加 Token） |
+
+### 会话管理接口
+
+```http
+GET /api/threads?q=小米&archived=0&limit=40
+```
+
+`archived`：`0` 仅进行中、`1` 仅已归档、省略为全部；只返回当前用户拥有的会话，并附带 `busyStatus`（`streaming` / `awaiting_approval`）。
+
+```http
+POST /api/threads/batch
+Content-Type: application/json
+
+{ "ids": ["thr_..."], "action": "archive" }
+```
+
+`action`：`archive` | `unarchive` | `delete`。删除会级联清理消息、附件、审批、交付物与运行记录；若会话仍在执行或等待审批，返回 `409 thread_busy`。
+
+```http
+POST /api/threads/{id}/stop
+```
+
+返回：
+
+```json
+{ "ok": true, "messageId": "msg_...", "active": true }
+```
+
+`active=false` 表示没有命中当前进程内的 Run，但服务端仍会把消息状态收敛为 `cancelled` 并清理待审批记录。
+
+`GET /api/threads/{id}/messages` 返回：
+
+```json
+{
+  "messages": [{ "id": "msg_...", "role": "assistant", "status": "completed", "parts": [] }],
+  "approvals": [],
+  "artifacts": []
+}
+```
+
+`parts` 中的 `pending_approval` 会与当前消息状态、审批记录对账；消息已结束或审批不存在时，前端会显示为已失效而不是可点击审批。
 
 ### SSE 事件协议
 
