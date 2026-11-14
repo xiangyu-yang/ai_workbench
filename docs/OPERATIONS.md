@@ -104,6 +104,7 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 
 - `Atlas 首席策略官` 由 `npm run db:seed-stock-expert` 幂等安装；新组织注册时自动创建，并绑定股票、深度研究、数据分析三个技能。
 - 股票技能使用 `fetch_market_data.py` / `live_market_scan.py` 拉取腾讯公开行情；A 股失败时回退东方财富 K 线。需要 Web/Worker 具备访问 `qt.gtimg.cn`、`web.ifzq.gtimg.cn`、`push2his.eastmoney.com` 的出站网络。
+- 股票研究禁止通过 read_url / http_request 抓取财经网页；港股/美股没有结构化财务数据时标注“未获取”，不编造财务数字。
 - 行情接口可能限流或变更；脚本失败时应让用户上传 CSV，禁止模型编造当日数据。
 - 输出必须包含数据截止日、来源、5/20 日量比口径、量价组合与风险提示；不构成投资建议。
 

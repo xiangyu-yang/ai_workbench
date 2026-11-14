@@ -213,6 +213,7 @@ while (step < maxSteps) {
 ### 6.2 技能（Skill Package）
 - **标准结构**：`SKILL.md`（YAML frontmatter：name/description/version/license/allowed-tools）+ `references/` + `scripts/` + `assets/`。
 - **渐进式披露**：运行时只注入 SKILL.md 正文与文件索引；细节通过只读 `skill_read_file` 按需读取，避免一次性占满上下文。
+- **上下文预算**：历史按字符预算裁剪，工具结果与技能文件限长，并在每轮注入当前请求锚点，避免长网页/长报告把用户请求挤出上下文。
 - **循环保护**：相同工具与参数重复调用会被去重、提示并强制收口，避免模型反复读取同一文件。
 - **生成状态**：对话在流式期间展示阶段、已用时间和停止入口；服务端仍保留 Run Manager，切页可恢复。
 - **审批对账**：读取消息快照时，若消息已结束或审批记录不存在，残留的 `pending_approval` 工具会被收敛为已拒绝，避免切换会话后出现幽灵审批卡片。

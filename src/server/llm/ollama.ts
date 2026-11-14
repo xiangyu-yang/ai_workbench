@@ -10,7 +10,7 @@ import type { LlmMessage, LlmResult, LlmToolCall, LlmUsage, StreamChatParams } f
  * - message.tool_calls：结构化工具调用。
  */
 
-const DEFAULT_NUM_CTX = 16_384;
+const DEFAULT_NUM_CTX = 24_576;
 
 export function ollamaNumCtx(): number {
   const value = Number(process.env.OLLAMA_NUM_CTX || DEFAULT_NUM_CTX);

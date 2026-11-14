@@ -31,6 +31,34 @@ import { buildToolset, type AgentMode } from './tools';
 import type { RuntimeTool, ToolContext, ToolResult } from './tools/types';
 import { validateArgs, truncate } from './validate';
 
+function dedupeTextParts(parts: MessagePart[]): void {
+  const seen = new Set<string>();
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (part.type !== 'text') continue;
+    const paragraphs = part.text.split(/\n{2,}/);
+    if (paragraphs.length > 1) {
+      const seenParagraphs = new Set<string>();
+      const unique = paragraphs.filter((paragraph) => {
+        const key = paragraph.replace(/\s+/g, '').trim();
+        if (key.length < 60) return true;
+        if (seenParagraphs.has(key)) return false;
+        seenParagraphs.add(key);
+        return true;
+      });
+      part.text = unique.join('\n\n');
+    }
+    const normalized = part.text.replace(/\s+/g, '').trim();
+    if (normalized.length < 80) continue;
+    if (seen.has(normalized)) {
+      parts.splice(i, 1);
+      i -= 1;
+    } else {
+      seen.add(normalized);
+    }
+  }
+}
+
 export type RunParams = {
   orgId: string;
   userId: string;
@@ -255,6 +283,8 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   }
   const toolCallCounts = new Map<string, number>();
   let loopGuard = false;
+  const stockResearch = toolset.skills.some((skill) => skill.name.includes('股票深度分析'));
+  const blockedStockTools = new Set(['read_url', 'fetch_url', 'http_request', 'web_search']);
 
   let llmMessages: LlmMessage[] = [];
   let systemPrompt = '';
@@ -379,6 +409,13 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
 
   const executeTool = async (call: LlmToolCall, tool: RuntimeTool | undefined): Promise<ToolResult> => {
     if (!tool) return { content: `未知工具：${call.name}`, isError: true };
+    if (stockResearch && blockedStockTools.has(call.name)) {
+      return {
+        content:
+          '股票研究禁止抓取财经网页或调用外部 HTTP 接口。请使用 live_market_scan / fetch_fundamentals 的结构化结果；数据缺失时直接说明缺口。',
+        isError: true,
+      };
+    }
     if (call.parseError) return { content: `工具参数解析失败：${call.parseError}`, isError: true };
     const validated = validateArgs(tool.parameters, call.args);
     if (!validated.ok) {
@@ -390,7 +427,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     params.signal?.addEventListener('abort', onAbort, { once: true });
     try {
       const result = await tool.execute(validated.value, { ...toolCtx, signal: controller.signal });
-      return { ...result, content: truncate(result.content) };
+      return { ...result, content: truncate(result.content, 6_000) };
     } catch (err) {
       return {
         content: `工具执行失败：${(err as Error).message || '未知错误'}`,
@@ -600,11 +637,55 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     Math.max(mode === 'plan' ? 1 : mode === 'ask' ? 6 : expert?.maxSteps || 8, 1),
     24,
   );
-  const toolDefs = toolset.tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    parameters: t.parameters,
-  }));
+  const toolDefs = toolset.tools
+    .filter((tool) => !(stockResearch && blockedStockTools.has(tool.name)))
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }));
+
+  const fitMessages = (messages: LlmMessage[]): LlmMessage[] => {
+    const maxChars = 24_000;
+    const system = messages[0]?.role === 'system' ? messages[0] : null;
+    const rest = system ? messages.slice(1) : messages;
+    const lastUserIndex = [...rest].map((message) => message.role).lastIndexOf('user');
+    if (lastUserIndex < 0) return messages;
+    const sizeOf = (message: LlmMessage) =>
+      typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length;
+    const tail = rest.slice(lastUserIndex).map((message) =>
+      message.role === 'tool'
+        ? { ...message, content: truncate(message.content, 2_500) }
+        : message,
+    );
+    let used = (system ? sizeOf(system) : 0) + tail.reduce((sum, message) => sum + sizeOf(message), 0);
+    const head = rest.slice(0, lastUserIndex);
+    const keptHead: LlmMessage[] = [];
+    for (let i = head.length - 1; i >= 0; i -= 1) {
+      const message = head[i];
+      const size = sizeOf(message);
+      if (used + size > maxChars) break;
+      keptHead.unshift(message);
+      used += size;
+    }
+    return [...(system ? [system] : []), ...keptHead, ...tail];
+  };
+  const callMessages = () => {
+    const fitted = fitMessages(llmMessages);
+    if (!stockResearch) return fitted;
+    return [
+      ...fitted,
+      {
+        role: 'system' as const,
+        content:
+          '【当前请求锚点】以下是用户最新请求，必须以此为准，不得切换到其他公司或股票；如上下文被压缩，以本条为唯一标的：' +
+          lastUserText(llmMessages) +
+          (/港股|美股|HK|US|\.HK|纳斯达克|纽交所/i.test(lastUserText(llmMessages))
+            ? '\n当前为港股/美股：live_market_scan 不提供结构化财务数据，禁止编造营收、净利、ROE、毛利率、现金流等具体数字，缺失一律写“未获取”。'
+            : ''),
+      },
+    ];
+  };
 
   let cancelled = false;
   let errorMessage = '';
@@ -621,6 +702,25 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     };
     const callSignature = (call: LlmToolCall) => `${call.name}:${stableValue(call.args || {})}`;
     let forceBreak = false;
+    let consecutiveToolErrors = 0;
+    let repeatedStepText = false;
+    let liveScanSucceeded = parts.some(
+      (part) =>
+        part.type === 'tool' &&
+        part.status === 'ok' &&
+        part.name === 'run_skill_script' &&
+        String((part.args as Record<string, unknown> | undefined)?.script || '') ===
+          'scripts/live_market_scan.py',
+    );
+    let skillReadSucceeded = parts.some(
+      (part) =>
+        part.type === 'tool' &&
+        part.status === 'ok' &&
+        (part.name === 'skill_read_file' || part.name === 'read_skill_file'),
+    );
+    const seenStepTexts = new Set<string>();
+    const lastRequest = lastUserText(llmMessages);
+    const multiStockRequest = /(推荐|筛选|选股|几只|多只|多支|\d+\s*只|组合|对比|候选)/.test(lastRequest);
 
     while (steps < maxSteps) {
       if (params.signal?.aborted) {
@@ -635,7 +735,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       const result = await streamChat({
         provider: resolved.provider,
         model: resolved.modelId,
-        messages: llmMessages,
+        messages: callMessages(),
         tools: mode === 'plan' ? undefined : toolDefs,
         temperature: expert?.temperature ?? 0.4,
         signal: params.signal,
@@ -675,6 +775,25 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       runIn += result.usage.inputTokens;
       runOut += result.usage.outputTokens;
       lastFinishReason = result.finishReason;
+
+      const normalizedStep = result.text.replace(/\s+/g, '').trim();
+      if (normalizedStep.length > 60) {
+        const repeated = [...seenStepTexts].some(
+          (existing) =>
+            existing === normalizedStep ||
+            (existing.length > 100 && normalizedStep.includes(existing.slice(0, 100))),
+        );
+        if (repeated && !repeatedStepText) {
+          repeatedStepText = true;
+          loopGuard = true;
+          forceBreak = true;
+          llmMessages.push({
+            role: 'user',
+            content: '你已经重复了相同的说明。停止重复读取或抓取，直接基于已获取的数据完成分析并给出结论。',
+          });
+        }
+        seenStepTexts.add(normalizedStep);
+      }
 
       if (result.toolCalls.length) {
         llmMessages.push({
@@ -785,6 +904,39 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           };
           if (!parts.includes(part)) parts.push(part);
           part.args = call.args;
+          const isLiveScan =
+            call.name === 'run_skill_script' &&
+            String((call.args as Record<string, unknown> | undefined)?.script || '') ===
+              'scripts/live_market_scan.py';
+          const isSkillRead = call.name === 'skill_read_file' || call.name === 'read_skill_file';
+          const reportAlreadyWritten =
+            parts.some((item) => item.type === 'artifact') ||
+            parts.some((item) => item.type === 'tool' && item.name === 'workspace_write' && item.status === 'ok');
+          if (stockResearch && reportAlreadyWritten && (isSkillRead || isLiveScan)) {
+            part.status = 'ok';
+            part.summary = '报告已写入交付物，跳过重复取数';
+            part.output = '完整报告已写入交付物，不再重复扫描或读取资料。';
+            loopGuard = true;
+            continue;
+          }
+          if (stockResearch && skillReadSucceeded && isSkillRead) {
+            part.status = 'ok';
+            part.summary = '已读取必要参考资料，跳过重复读取';
+            part.output = '本轮已读取过参考资料；live_market_scan 已包含标准分析所需数据，请直接完成报告。';
+            loopGuard = true;
+            continue;
+          }
+          if (stockResearch && !multiStockRequest && liveScanSucceeded && isLiveScan) {
+            part.status = 'ok';
+            part.summary = '已获取该标的行情，跳过重复扫描';
+            part.output = '单标的研究只需要扫描一次行情；请直接基于已有数据完成报告。';
+            loopGuard = true;
+            llmMessages.push({
+              role: 'user',
+              content: '当前是单标的研究，请不要重复调用 live_market_scan，直接完成报告。',
+            });
+            continue;
+          }
           const signature = callSignature(call);
           const repeatCount = (toolCallCounts.get(signature) || 0) + 1;
           toolCallCounts.set(signature, repeatCount);
@@ -830,6 +982,23 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           const started = Date.now();
           send({ type: 'tool_result', id: call.id, name: call.name, status: 'ok', summary: '执行中…' });
           const toolResult = await executeTool(call, tool);
+          if (!toolResult.isError && isLiveScan) liveScanSucceeded = true;
+          if (!toolResult.isError && isSkillRead) skillReadSucceeded = true;
+          if (!toolResult.isError && call.name === 'workspace_write') forceBreak = true;
+          if (toolResult.isError) {
+            consecutiveToolErrors += 1;
+            if (consecutiveToolErrors >= 2) {
+              loopGuard = true;
+              llmMessages.push({
+                role: 'user',
+                content:
+                  '连续工具调用失败。停止继续抓取或更换数据源；请基于已经成功获取的数据完成分析，并明确标注缺失的数据和假设。',
+              });
+            }
+            if (consecutiveToolErrors >= 3) forceBreak = true;
+          } else {
+            consecutiveToolErrors = 0;
+          }
           part.status = toolResult.isError ? 'error' : 'ok';
           part.output = toolResult.content;
           part.summary = toolResult.summary || (toolResult.isError ? '执行失败' : '已完成');
@@ -958,7 +1127,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     loadedStockSkill &&
     hasToolResult &&
     !wroteArtifact &&
-    (looksLikeProgressOnly || loopGuard)
+    (looksLikeProgressOnly || (loopGuard && currentText.length < 1_200))
   ) {
     try {
       let reportPart: TextPart | null = null;
@@ -1006,6 +1175,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     }
   }
 
+  dedupeTextParts(parts);
   // 只要股票工具已跑完、模型给出了正文但没有写文件，就自动落一个可预览的 Markdown 交付物。
   const finalStockText = textOfParts(parts).trim();
   if (
