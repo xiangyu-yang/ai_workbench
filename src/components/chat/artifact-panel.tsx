@@ -85,17 +85,70 @@ export function ArtifactPanel({
   const isJson = artifact.mime.includes('json') || artifact.name.endsWith('.json');
 
   const downloadPdf = () => {
-    if (!previewRef.current) return;
-    const previousTitle = document.title;
-    document.title = artifact.name.replace(/\.(md|markdown)$/i, '') || artifact.name;
-    document.body.classList.add('pdf-printing');
-    const cleanup = () => {
-      document.body.classList.remove('pdf-printing');
-      document.title = previousTitle;
-      window.removeEventListener('afterprint', cleanup);
+    const source = previewRef.current;
+    if (!source) return;
+    const title = artifact.name.replace(/\.(md|markdown)$/i, '') || artifact.name;
+    const escape = (value: string) =>
+      value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const printStyles = `
+      @page { size: A4; margin: 16mm 15mm 18mm; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      body { color: #1f2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; font-size: 13.5px; line-height: 1.8; }
+      .pdf-doc { max-width: 100%; }
+      .pdf-doc h1, .pdf-doc h2, .pdf-doc h3, .pdf-doc h4 { color: #111827; font-weight: 650; line-height: 1.35; break-after: avoid; page-break-after: avoid; }
+      .pdf-doc h1 { font-size: 25px; margin: 0 0 18px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; }
+      .pdf-doc h2 { font-size: 19px; margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+      .pdf-doc h3 { font-size: 15.5px; margin: 20px 0 8px; }
+      .pdf-doc h4 { font-size: 14px; margin: 16px 0 6px; }
+      .pdf-doc p { margin: 0.7em 0; }
+      .pdf-doc strong { color: #111827; font-weight: 650; }
+      .pdf-doc em { color: #374151; }
+      .pdf-doc a { color: #1d4ed8; text-decoration: underline; text-underline-offset: 2px; }
+      .pdf-doc ul, .pdf-doc ol { margin: 0.7em 0; padding-left: 1.6em; }
+      .pdf-doc ul { list-style: disc; }
+      .pdf-doc ol { list-style: decimal; }
+      .pdf-doc li { margin: 0.25em 0; }
+      .pdf-doc li::marker { color: #6b7280; }
+      .pdf-doc blockquote { margin: 14px 0; padding: 10px 14px; border-left: 3px solid #7c6cff; background: #f5f3ff; color: #374151; border-radius: 0 6px 6px 0; break-inside: avoid; }
+      .pdf-doc blockquote p { margin: 0.2em 0; }
+      .pdf-doc code { font-family: "SF Mono", ui-monospace, Menlo, Monaco, monospace; font-size: 0.88em; color: #111827; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 1px 4px; }
+      .pdf-doc pre { margin: 14px 0; padding: 14px 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; white-space: pre-wrap; word-break: break-word; break-inside: avoid; page-break-inside: avoid; }
+      .pdf-doc pre code { display: block; padding: 0; background: transparent; border: 0; font-size: 11.5px; line-height: 1.65; color: #111827; }
+      .pdf-doc button { display: none !important; }
+      .pdf-doc table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 10.5px; line-height: 1.55; page-break-inside: auto; }
+      .pdf-doc thead { display: table-header-group; }
+      .pdf-doc tr { break-inside: avoid; page-break-inside: avoid; }
+      .pdf-doc th, .pdf-doc td { border: 1px solid #d1d5db; padding: 5px 7px; text-align: left; vertical-align: top; color: #1f2937; }
+      .pdf-doc th { background: #f3f4f6; color: #111827; font-weight: 650; }
+      .pdf-doc tr:nth-child(even) td { background: #fafafa; }
+      .pdf-doc hr { margin: 20px 0; border: 0; border-top: 1px solid #e5e7eb; }
+      .pdf-doc img { max-width: 100%; height: auto; border-radius: 6px; }
+      .pdf-doc .overflow-x-auto { overflow: visible !important; border: 0 !important; border-radius: 0 !important; }
+      .hljs-comment, .hljs-quote { color: #6b7280; font-style: italic; }
+      .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type { color: #7c3aed; }
+      .hljs-string, .hljs-regexp, .hljs-addition { color: #15803d; }
+      .hljs-number, .hljs-symbol, .hljs-bullet { color: #b45309; }
+      .hljs-title, .hljs-section, .hljs-name, .hljs-function { color: #1d4ed8; }
+      .hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable { color: #a16207; }
+      .hljs-built_in, .hljs-class .hljs-title { color: #0e7490; }
+      .hljs-meta, .hljs-deletion { color: #b91c1c; }
+      .pdf-meta { margin: 0 0 22px; color: #6b7280; font-size: 11px; }
+    `;
+    const win = window.open('', '_blank', 'width=920,height=760');
+    if (!win) {
+      window.alert('PDF 导出需要允许弹出窗口，请允许后重试。');
+      return;
+    }
+    win.document.open();
+    win.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>${escape(title)}</title><style>${printStyles}</style></head><body><article class="pdf-doc"><div class="pdf-meta">${escape(artifact.name)}</div>${source.innerHTML}</article></body></html>`);
+    win.document.close();
+    const runPrint = () => {
+      win.focus();
+      win.print();
     };
-    window.addEventListener('afterprint', cleanup);
-    window.setTimeout(() => window.print(), 60);
+    window.setTimeout(runPrint, 500);
+    win.addEventListener('afterprint', () => window.setTimeout(() => win.close(), 300), { once: true });
   };
 
   return (
