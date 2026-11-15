@@ -1,5 +1,5 @@
 import type { Emit } from '@/server/agent/events';
-import type { CitationPart } from '@/server/db/schema';
+import type { CitationPart, MessagePart } from '@/server/db/schema';
 
 export type ArtifactRef = {
   id: string;
@@ -26,6 +26,8 @@ export type ToolContext = {
   messageId?: string | null;
   runId?: string | null;
   scopeId: string;
+  /** 当前正在生成的消息 parts，供 memory 工具读取尚未落库的工具结果 */
+  parts?: MessagePart[];
   mode: string;
   signal?: AbortSignal;
   emit: Emit;

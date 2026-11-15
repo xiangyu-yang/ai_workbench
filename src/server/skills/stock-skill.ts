@@ -200,6 +200,7 @@ const STOCK_BODY = `# 股票深度分析与预测
 - 开头先给“行情快照 + 量价诊断”，再给结论卡片；写明数据截止日、来源、5/20 日量比与量价组合。
 - 深度分析可读取 1-4 个**不同**的 references；首选 assets/equity-research-template.md；若加载了深度调研方法论，优先读取其 references/evidence-standards.md；再按需选择研究框架、估值或量价 playbook。同一路径只读一次，禁止遍历或重复读取。
 - 工具结果和旧对话可能被上下文压缩；需要完整数字/表格时调用 evidence_search/evidence_read，需要上一轮报告/结论时调用 history_search，不要要求用户重发。
+- 当前轮 live_market_scan / 参考文件已经返回时，优先直接使用；不要为了“再确认”反复调用记忆工具。evidence_search 返回 0 条或 evidence_read 失败后禁止连续重试，直接基于已有数据完成报告。
 - 结论卡片：评级（买入/增持/中性/减持/回避）、时间维度、目标区间、概率加权收益、置信度。
 - 目标价用区间，不用单点；说明对应情景与概率。
 - 估值表展示关键假设与敏感性（WACC ±1%、增长 ±2%）。

@@ -359,6 +359,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     messageId: params.messageId,
     runId,
     scopeId: params.threadId,
+    parts,
     mode,
     signal: params.signal,
     emit: (event) => send(event),
@@ -713,6 +714,8 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     const callSignature = (call: LlmToolCall) => `${call.name}:${stableValue(call.args || {})}`;
     let forceBreak = false;
     let consecutiveToolErrors = 0;
+    let memoryToolCalls = 0;
+    let memoryToolMisses = 0;
     let repeatedStepText = false;
     let liveScanSucceeded = parts.some(
       (part) =>
@@ -923,6 +926,18 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             String((call.args as Record<string, unknown> | undefined)?.script || '') ===
               'scripts/live_market_scan.py';
           const isSkillRead = call.name === 'skill_read_file' || call.name === 'read_skill_file';
+          const isMemoryCall = ['evidence_search', 'evidence_read', 'history_search'].includes(call.name);
+          if (isMemoryCall) {
+            memoryToolCalls += 1;
+            if (memoryToolCalls > 3) {
+              part.status = 'ok';
+              part.summary = '检索次数已达上限';
+              part.output = '本轮检索次数已达上限，请直接基于已获取的数据完成回答。';
+              loopGuard = true;
+              forceBreak = true;
+              continue;
+            }
+          }
           const reportAlreadyWritten =
             parts.some((item) => item.type === 'artifact') ||
             parts.some((item) => item.type === 'tool' && item.name === 'workspace_write' && item.status === 'ok');
@@ -1009,6 +1024,21 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           if (!toolResult.isError && isLiveScan) liveScanSucceeded = true;
           if (!toolResult.isError && isSkillRead) skillReadPaths.add(skillReadPath);
           if (!toolResult.isError && call.name === 'workspace_write') forceBreak = true;
+          if (isMemoryCall) {
+            const noResult =
+              toolResult.isError ||
+              /0 条|没有找到|未找到|证据不存在|空结果/.test(toolResult.content);
+            if (noResult) {
+              memoryToolMisses += 1;
+              loopGuard = true;
+              llmMessages.push({
+                role: 'user',
+                content:
+                  '本轮记忆检索没有返回可用结果。不要再猜测 evidenceId 或反复检索；如果当前上下文已有行情/财务数据，直接基于已有数据完成报告。',
+              });
+              if (memoryToolMisses >= 2) forceBreak = true;
+            }
+          }
           if (toolResult.isError) {
             consecutiveToolErrors += 1;
             if (consecutiveToolErrors >= 2) {

@@ -4,6 +4,7 @@ import * as React from 'react';
 import {
   Download,
   FileCode2,
+  FileDown,
   FileText,
   Image as ImageIcon,
   Loader2,
@@ -37,6 +38,7 @@ export function ArtifactPanel({
   const [content, setContent] = React.useState<string>('');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const previewRef = React.useRef<HTMLDivElement>(null);
   const cache = React.useRef(new Map<string, string>());
 
   React.useEffect(() => {
@@ -82,6 +84,20 @@ export function ArtifactPanel({
   const isCsv = artifact.mime.includes('csv') || artifact.name.endsWith('.csv');
   const isJson = artifact.mime.includes('json') || artifact.name.endsWith('.json');
 
+  const downloadPdf = () => {
+    if (!previewRef.current) return;
+    const previousTitle = document.title;
+    document.title = artifact.name.replace(/\.(md|markdown)$/i, '') || artifact.name;
+    document.body.classList.add('pdf-printing');
+    const cleanup = () => {
+      document.body.classList.remove('pdf-printing');
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.setTimeout(() => window.print(), 60);
+  };
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col border-l border-line bg-surface">
       <div className="flex h-13 shrink-0 items-center gap-2 border-b border-line px-4">
@@ -97,10 +113,22 @@ export function ArtifactPanel({
         <a
           href={`/api/artifacts/${artifact.id}?download=1`}
           className="rounded-md p-1.5 text-faint transition hover:bg-surface-3 hover:text-ink"
-          title="下载"
+          title={isMarkdown ? '下载 Markdown' : '下载原文件'}
         >
           <Download size={14} />
         </a>
+        {isMarkdown ? (
+          <button
+            type="button"
+            onClick={downloadPdf}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-1.5 text-faint transition hover:bg-surface-3 hover:text-ink"
+            title="下载 PDF（打开打印预览后选择“另存为 PDF”）"
+            aria-label="下载 PDF"
+          >
+            <FileDown size={14} />
+            <span className="text-[9.5px]">PDF</span>
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onClose}
@@ -119,7 +147,7 @@ export function ArtifactPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+      <div className="artifact-preview-scroll min-h-0 flex-1 overflow-y-auto scrollbar-thin">
         {loading ? (
           <div className="flex h-full items-center justify-center gap-2 text-[12px] text-faint">
             <Loader2 size={14} className="animate-spin" /> 加载交付物…
@@ -151,7 +179,7 @@ export function ArtifactPanel({
         ) : isCsv ? (
           <CsvPreview content={content} />
         ) : isMarkdown ? (
-          <div className="p-5">
+          <div ref={previewRef} className="pdf-export p-5">
             <Markdown>{content}</Markdown>
           </div>
         ) : (

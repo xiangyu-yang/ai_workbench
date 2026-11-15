@@ -16,8 +16,26 @@ async function threadMessages(threadId: string, orgId: string) {
   return rows.reverse();
 }
 
-function snippet(text: string, query: string, radius = 1_600): string {
-  const index = text.toLowerCase().indexOf(query.toLowerCase());
+function liveToolParts(ctx: { parts?: MessagePart[] }): ToolPart[] {
+  return (ctx.parts || []).filter(
+    (part): part is ToolPart => part.type === 'tool' && Boolean(part.output),
+  );
+}
+
+function queryTerms(query: string): string[] {
+  return [...new Set(query.split(/[\s,，、;；|/]+/).map((item) => item.trim()).filter((item) => item.length >= 2))];
+}
+
+function firstMatchIndex(text: string, terms: string[]): number {
+  const lower = text.toLowerCase();
+  return terms.reduce((best, term) => {
+    const index = lower.indexOf(term.toLowerCase());
+    return index >= 0 && (best < 0 || index < best) ? index : best;
+  }, -1);
+}
+
+function snippet(text: string, terms: string[], radius = 1_600): string {
+  const index = firstMatchIndex(text, terms);
   if (index < 0) return text.slice(0, radius * 2);
   const start = Math.max(0, index - radius);
   return `${start > 0 ? '…' : ''}${text.slice(start, start + radius * 2)}${start + radius * 2 < text.length ? '…' : ''}`;
@@ -42,14 +60,28 @@ const evidenceSearch: RuntimeTool = {
     const query = String(args.query || '').trim();
     if (!query) return { content: '检索关键词为空', isError: true };
     const limit = Math.min(Math.max(Number(args.limit) || 3, 1), 5);
+    const terms = queryTerms(query);
     const rows = await threadMessages(ctx.threadId, ctx.orgId);
-    const matches: Array<{ part: ToolPart; text: string }> = [];
+    const seen = new Set<string>();
+    const parts: ToolPart[] = [];
+    for (const part of liveToolParts(ctx)) {
+      if (seen.has(part.id)) continue;
+      seen.add(part.id);
+      parts.push(part);
+    }
     for (const row of rows) {
       for (const part of (row.parts || []) as MessagePart[]) {
-        if (part.type !== 'tool' || !part.output) continue;
-        if (part.output.toLowerCase().includes(query.toLowerCase())) matches.push({ part, text: part.output });
+        if (part.type !== 'tool' || !part.output || seen.has(part.id)) continue;
+        seen.add(part.id);
+        parts.push(part);
       }
     }
+    const matches = parts
+      .filter((part) => {
+        const output = part.output || '';
+        return terms.length ? terms.some((term) => output.toLowerCase().includes(term.toLowerCase())) : output.toLowerCase().includes(query.toLowerCase());
+      })
+      .map((part) => ({ part, text: part.output || '' }));
     const selected = matches.slice(-limit).reverse();
     if (!selected.length) {
       return {
@@ -60,7 +92,7 @@ const evidenceSearch: RuntimeTool = {
     const body = selected
       .map(
         ({ part, text }, index) =>
-          `[${index + 1}] evidenceId=${part.id} · ${part.name} · ${part.summary || ''}\n${snippet(text, query)}`,
+          `[${index + 1}] evidenceId=${part.id} · ${part.name} · ${part.summary || ''}\n${snippet(text, terms)}`,
       )
       .join('\n\n');
     return {
@@ -91,18 +123,28 @@ const evidenceRead: RuntimeTool = {
     const offset = Math.max(Number(args.offset) || 0, 0);
     const limit = Math.min(Math.max(Number(args.limit) || 4_000, 500), 8_000);
     const rows = await threadMessages(ctx.threadId, ctx.orgId);
+    const allParts: ToolPart[] = [...liveToolParts(ctx)];
     for (const row of rows) {
       for (const part of (row.parts || []) as MessagePart[]) {
-        if (part.type !== 'tool' || part.id !== evidenceId || !part.output) continue;
-        const slice = part.output.slice(offset, offset + limit);
-        const next = offset + slice.length;
-        return {
-          content: `<untrusted_data type="tool_evidence" evidenceId="${part.id}">\n${slice}\n</untrusted_data>\n${next < part.output.length ? `\n（还有后续内容，可用 offset=${next} 继续读取）` : '\n（已读取到末尾）'}`,
-          summary: `${part.name} · ${offset}-${next} / ${part.output.length}`,
-        };
+        if (part.type === 'tool' && part.output && !allParts.some((item) => item.id === part.id)) {
+          allParts.push(part);
+        }
       }
     }
-    return { content: `未找到工具证据 ${evidenceId}`, isError: true };
+    const found = allParts.find((part) => part.id === evidenceId && part.output);
+    if (found?.output) {
+      const slice = found.output.slice(offset, offset + limit);
+      const next = offset + slice.length;
+      return {
+        content: `<untrusted_data type="tool_evidence" evidenceId="${found.id}">\n${slice}\n</untrusted_data>\n${next < found.output.length ? `\n（还有后续内容，可用 offset=${next} 继续读取）` : '\n（已读取到末尾）'}`,
+        summary: `${found.name} · ${offset}-${next} / ${found.output.length}`,
+      };
+    }
+    return {
+      content: `未找到工具证据 ${evidenceId}。请先调用 evidence_search 获取 evidenceId，不要猜测调用 ID。`,
+      summary: '证据不存在',
+      isError: true,
+    };
   },
 };
 
@@ -125,9 +167,16 @@ const historySearch: RuntimeTool = {
     const query = String(args.query || '').trim();
     if (!query) return { content: '检索关键词为空', isError: true };
     const limit = Math.min(Math.max(Number(args.limit) || 3, 1), 5);
+    const terms = queryTerms(query);
     const rows = await threadMessages(ctx.threadId, ctx.orgId);
     const selected = rows
-      .filter((row) => row.role !== 'system' && row.content?.toLowerCase().includes(query.toLowerCase()))
+      .filter((row) => {
+        if (row.role === 'system' || !row.content) return false;
+        const content = row.content.toLowerCase();
+        return terms.length
+          ? terms.some((term) => content.includes(term.toLowerCase()))
+          : content.includes(query.toLowerCase());
+      })
       .slice(-limit)
       .reverse();
     if (!selected.length) {
@@ -136,7 +185,7 @@ const historySearch: RuntimeTool = {
     const body = selected
       .map(
         (row, index) =>
-          `[${index + 1}] ${row.role} · ${row.createdAt.toISOString().slice(0, 19)}\n${snippet(row.content, query)}`,
+          `[${index + 1}] ${row.role} · ${row.createdAt.toISOString().slice(0, 19)}\n${snippet(row.content, terms)}`,
       )
       .join('\n\n');
     return {
