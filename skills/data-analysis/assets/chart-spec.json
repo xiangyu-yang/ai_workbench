@@ -1,0 +1,14 @@
+{
+  "rules": [
+    { "goal": "趋势", "chart": "line", "x": "time", "y": "metric", "note": "不超过 5 条线，标注事件" },
+    { "goal": "对比", "chart": "bar", "x": "category", "y": "value", "note": "按数值排序，从大到小" },
+    { "goal": "构成", "chart": "stacked_bar", "x": "time", "y": "segment", "note": "段数不超过 6" },
+    { "goal": "分布", "chart": "histogram", "x": "value", "note": "标注中位数与 P90" },
+    { "goal": "漏斗", "chart": "funnel", "x": "stage", "y": "count", "note": "同时标注转化率与流失量" }
+  ],
+  "accessibility": {
+    "color": "使用色盲友好配色，不只用颜色区分",
+    "labels": "直接标注关键点，减少图例往返",
+    "source": "图表下方标注数据范围与口径"
+  }
+}

@@ -74,7 +74,7 @@ npm run dev       # http://localhost:3100
 人格 + 模型 + 技能 + 知识库 + 连接器 + 工具策略的组合，支持可见性、版本、调用统计与多专家委派（最多两级）。
 
 ### 技能（标准技能包）
-- **标准结构**：`SKILL.md`（YAML frontmatter + 方法正文）、`references/`、`scripts/`、`assets/`，支持在线文件树编辑与资源上传。
+- **标准结构**：`skills/` 下以真实目录保存 `SKILL.md`（YAML frontmatter + 方法正文）、`references/`、`scripts/`、`assets/`；界面支持在线文件树编辑与资源上传。内置包由 `npm run db:seed-skills` 写入数据库发布快照，运行时不直接读磁盘。
 - **内置 9 个完整技能包**（每个都含 references/scripts/assets）：周报生成器、数据分析与洞察、竞品研究、会议纪要与行动项、客服工单分级与回复、深度调研方法论、结构化写作规范、RFP 投标响应、股票深度分析与预测。
 - **Atlas 首席策略官**：预置股票专家，绑定股票、深度研究、数据分析三个技能；覆盖 A/H/美股个股、指数、大盘、风格轮动、估值与概率化情景。
 - 股票技能内置 `fetch_market_data.py`、`live_market_scan.py`、`screen_stocks.py`、`market_overview.py`、`fetch_fundamentals.py`：实时行情、量价诊断、A 股 8 期基本面、龙头观察池筛选、A/H/US 指数温度计；不依赖付费行情 API。
@@ -121,6 +121,7 @@ PostgreSQL / PGlite（同一套 Drizzle schema 与迁移）
 ## 目录结构
 
 ```
+skills/                   # 内置技能源文件（SKILL.md + references/scripts/assets）
 src/
   app/                    # 页面与 API（App Router）
     (app)/chat|apps|tasks|experts|skills|connectors|knowledge|settings
@@ -184,6 +185,7 @@ node .next/standalone/server.js   # 需先复制 .next/static 与 drizzle
 | `TASK_CONCURRENCY` | `2` | 单进程任务并发 |
 | `MIGRATE_ON_BOOT` | `true` | 启动时自动迁移 |
 | `TAVILY_API_KEY` | 空 | 启用受控联网搜索；未配置时股票研究隐藏该工具 |
+| `SKILLS_DIR` | `./skills` | 内置技能源目录；standalone/Docker 已显式复制 |
 | `TOOL_ALLOWED_HOSTS` | 空 | 工具出口域名白名单（允许内网时显式列出） |
 
 ---

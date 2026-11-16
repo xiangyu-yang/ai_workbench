@@ -4,7 +4,7 @@ const config: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: process.cwd(),
   outputFileTracingIncludes: {
-    '/**': ['./drizzle/**/*'],
+    '/**': ['./drizzle/**/*', './skills/**/*'],
   },
   reactStrictMode: true,
   poweredByHeader: false,

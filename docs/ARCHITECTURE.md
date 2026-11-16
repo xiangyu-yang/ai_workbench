@@ -216,7 +216,8 @@ while (step < maxSteps) {
 人格 + 模型 + 技能 + 知识 + 连接器 + 工具策略的可版本化组合。支持 `private / team / public` 可见性；可被任务与 API 调用；可委派给其他专家。
 
 ### 6.2 技能（Skill Package）
-- **标准结构**：`SKILL.md`（YAML frontmatter：name/description/version/license/allowed-tools）+ `references/` + `scripts/` + `assets/`。
+- **标准结构**：仓库根目录 `skills/<slug>/` 保存真实 `SKILL.md`（YAML frontmatter：name/description/version/license/allowed-tools）+ `references/` + `scripts/` + `assets/`；`src/server/skills/library.ts` 负责加载为 `SkillDefinition`，再写入数据库发布快照。
+- **源文件优先**：`skills/` 是作者、代码评审、脚本调试的源；运行时仍从数据库快照加载，避免部署时动态读盘和版本漂移。Next standalone 与 Docker 镜像显式复制 `skills/`，可用 `SKILLS_DIR` 覆盖路径。
 - **渐进式披露**：运行时注入 SKILL.md 正文与文件索引；细节通过只读 `skill_read_file` 按需读取，单文件最多 30k 字符，模型侧再按上下文预算压缩。
 - **滑动窗口**：历史按最近字符预算保留，窗口外旧对话自动生成抽取式摘要（用户目标、助手结论），完整原文由 `history_search` 检索；工具结果完整保存在消息中，模型只接收摘要，可用 `evidence_search/evidence_read` 取回。
 - **上下文预算**：历史、工具结果与技能文件均有限长，并在每轮注入当前请求锚点，避免长网页/长报告把用户请求挤出上下文。
@@ -326,6 +327,32 @@ Prometheus + Grafana + Loki
 | MCP | 官方 SDK + 自管连接池 | 生态标准、三种传输 | stdio 有进程安全成本 |
 | 队列 | DB 状态机 + 进程内执行器 / 独立 Worker | 少一个中间件、事务一致 | 超高吞吐需 Redis |
 | UI | Tailwind v4 + 自建设计系统 | 极致定制、无组件库锁定 | 组件需自维护 |
+
+---
+
+### 11.1 技术栈评估（为什么不是全量 Python/Java + Vue）
+
+当前阶段选择 **Next.js + TypeScript 模块化单体**，不是因为“TS 万能”，而是因为控制面与交互层的边界高度一致：
+
+- 对话、SSE、RSC、审批恢复、工具调用和交付物预览共享同一份类型与请求生命周期；
+- PGlite/Postgres 同一套 Drizzle schema，单镜像可私有化；
+- Agent Runtime、LLM Gateway、MCP、RAG、任务执行器都在一个事务边界内，避免早期微服务分布式事务；
+- 团队可以用一套语言完成 BFF、领域服务、脚本沙箱和前端。
+
+**不建议现在全量改 Python/Java + Vue**：
+
+| 方案 | 适合场景 | 当前代价 |
+|---|---|---|
+| Python 后端 | 量化因子、回测、ML、另类数据 | 需要重做鉴权/审批/SSE/多租户，并新增 Node/Python 双运行时 |
+| Java 后端 | 大型企业统一中间件、强事务、已有 Java 团队 | 开发与部署成本高，早期产品迭代变慢 |
+| Vue 前端 | 团队已有 Vue 资产 | 与 React/Next 功能等价，迁移不产生产品价值 |
+
+**推荐演进**：
+
+1. 保持 TS 作为控制面与前端；
+2. 把量化/回测/ML 独立成 Python FastAPI 服务，通过内部 HTTP 或队列调用；
+3. 当任务并发、嵌入吞吐或多地域成为真实瓶颈时，再按边界拆分 Worker/Gateway；
+4. 技能源文件化、领域模块化、可观测性优先于语言重写。
 
 ---
 

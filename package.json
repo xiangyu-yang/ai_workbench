@@ -16,7 +16,8 @@
     "setup": "npm run db:migrate && npm run db:seed",
     "db:backfill": "tsx scripts/backfill-packages.ts",
     "db:seed-skills": "tsx scripts/seed-skills.ts",
-    "db:seed-stock-expert": "tsx scripts/seed-stock-expert.ts"
+    "db:seed-stock-expert": "tsx scripts/seed-stock-expert.ts",
+    "skills:check": "tsx scripts/check-skills.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.0",

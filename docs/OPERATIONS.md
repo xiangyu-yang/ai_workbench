@@ -133,12 +133,13 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 ## 技能库升级
 
 ```bash
+npm run skills:check                   # 校验 skills/ 包结构和必需目录
 npm run db:seed-skills                 # 仅补齐缺失的内置技能
 npm run db:seed-stock-expert           # 补齐 Atlas 股票专家与应用（幂等）
 npm run db:seed-skills -- --force      # 覆盖同名技能包并生成新版本（会替换包文件）
 ```
 
-内置库定义在 `src/server/skills/library.ts`；新组织在注册时自动安装。升级前先停止应用（PGlite 单进程），并备份 `DATA_DIR`。
+内置库源文件在仓库根目录 `skills/<slug>/`（SKILL.md + references/scripts/assets）；`src/server/skills/library.ts` 负责加载，新组织注册时写入数据库快照。升级前运行 `npm run skills:check`，停止应用（PGlite 单进程），备份 `DATA_DIR`；Next standalone 与 Docker 镜像已复制 `skills/`，自定义运行目录可用 `SKILLS_DIR` 覆盖。
 
 ## 技能脚本安全
 

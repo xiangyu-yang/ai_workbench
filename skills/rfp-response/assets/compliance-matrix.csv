@@ -1,0 +1,5 @@
+id,requirement,mandatory,category,response,section,owner,evidence,status
+R-001,支持私有化部署并兼容现有 Kubernetes 集群,mandatory,技术,满足,3.2 部署架构,张三,案例A/架构图,已确认
+R-002,提供 SSO 与细粒度权限,mandatory,安全,部分满足,4.1 安全,李四,路线图 Q1,进行中
+R-003,提供 99.9% SLA,mandatory,交付,需澄清,5.2 SLA,王五,待法务确认,未开始
+R-004,支持自定义报表,optional,技术,满足,3.5 报表,张三,演示环境,已确认

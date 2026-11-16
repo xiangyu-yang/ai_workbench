@@ -1,0 +1,13 @@
+/* Cuter 周报打印样式：用于浏览器打印或转 PDF */
+:root { --ink: #1a1d24; --muted: #5b6472; --line: #d9dee7; --accent: #5b4bdb; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 40px; color: var(--ink); font: 14px/1.8 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+h1 { font-size: 26px; margin: 0 0 8px; }
+h2 { font-size: 18px; margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 2px solid var(--accent); }
+h3 { font-size: 15px; margin: 18px 0 8px; }
+blockquote { margin: 0 0 20px; color: var(--muted); border-left: 3px solid var(--accent); padding-left: 12px; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0 18px; font-size: 12.5px; }
+th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: #f4f5fa; font-weight: 600; }
+ul, ol { padding-left: 22px; }
+@media print { body { padding: 0; } h2 { break-after: avoid; } table { break-inside: avoid; } }

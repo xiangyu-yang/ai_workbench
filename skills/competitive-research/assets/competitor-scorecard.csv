@@ -1,0 +1,7 @@
+name,criterion_id,weight,score,evidence,source,date
+我方,capability,25,3,核心对话与任务闭环,内部评估,2026-11-01
+竞品A,capability,25,4,多模型与工具生态,官网文档,2026-11-01
+竞品B,capability,25,2,功能有限,试用,2026-11-01
+我方,experience,15,4,统一工作台,内部评估,2026-11-01
+竞品A,experience,15,3,配置复杂,用户评价,2026-11-01
+竞品B,experience,15,4,上手快,试用,2026-11-01
