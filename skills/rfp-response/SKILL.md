@@ -1,5 +1,5 @@
 ---
-name: RFP 投标响应
+name: rfp-response
 description: 拆解 RFP/招标文件，生成合规矩阵、win themes 与投标大纲，逐条覆盖强制项并组织评审。
 version: 1.0.0
 license: internal
@@ -8,6 +8,7 @@ allowed-tools:
   - workspace_write
   - run_skill_script
 metadata:
+  display-name: RFP 投标响应
   category: 商务
   icon: briefcase
   bind-to: 文档工程师

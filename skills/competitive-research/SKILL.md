@@ -1,5 +1,5 @@
 ---
-name: 竞品研究
+name: competitive-research
 description: 针对明确决策问题做竞品选择、维度加权、证据分级与评分，输出竞品对比报告和威胁/机会建议。
 version: 1.0.0
 license: internal
@@ -10,6 +10,7 @@ allowed-tools:
   - workspace_write
   - run_skill_script
 metadata:
+  display-name: 竞品研究
   category: 研究
   icon: target
   bind-to: 深度研究员,Atlas 首席策略官

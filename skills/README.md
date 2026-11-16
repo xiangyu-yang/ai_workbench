@@ -21,7 +21,7 @@
 ## 新增或修改
 
 1. 在 `skills/` 新建目录，至少包含 `SKILL.md`、`references/`、`scripts/`、`assets/`；
-2. frontmatter 至少包含 `name`、`description`，可选 `allowed-tools`；
+2. frontmatter 的 `name` 使用标准 ASCII slug（如 `stock-analysis`），中文界面名写在 `metadata.display-name`；`description` 必填，可选 `allowed-tools`；
 3. `metadata` 中声明 `category`、`icon`、`bind-to`、`requires-execution`；
 4. 运行 `npm run skills:check` 校验；
 5. 在开发环境执行 `npm run db:seed-skills -- --force --only <技能名>` 更新数据库快照。

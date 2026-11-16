@@ -119,6 +119,12 @@ def main():
     if quote_error:
         warnings.append('行情快照获取失败：' + quote_error)
     warnings.append('财务数据为报告期累计口径；不同行业与会计政策需结合报表附注。')
+    try:
+        report_date = dt.date.fromisoformat(str(latest.get('reportDate') or '')[:10])
+        if (dt.date.today() - report_date).days > 200:
+            warnings.append('最新报告期距今超过 200 天，可能尚未披露新报告或接口延迟')
+    except ValueError:
+        warnings.append('无法解析最新报告期日期')
     result = {
         'symbol': resolved['display'],
         'name': (quote or {}).get('name') or resolved['display'],
@@ -148,10 +154,21 @@ def main():
     lines.append('')
     lines.append('## 近几期趋势（报告期累计）')
     lines.append('')
-    lines.append('| 报告期 | 营收 | 营收同比 | 归母净利 | 净利同比 | ROE | 毛利率 |')
-    lines.append('| --- | ---: | ---: | ---: | ---: | ---: | ---: |')
+    lines.append('| 报告期 | 营收 | 营收同比 | 归母净利 | 净利同比 | ROE | 毛利率 | 净利率 | 负债率 | 经营现金流 |')
+    lines.append('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |')
     for item in history:
-        lines.append('| ' + item['reportDate'] + ' | ' + fmt_money(item['revenue']) + ' | ' + str(item['revenueYoY']) + '% | ' + fmt_money(item['netProfit']) + ' | ' + str(item['netProfitYoY']) + '% | ' + str(item['roe']) + '% | ' + str(item['grossMargin']) + '% |')
+        lines.append(
+            '| ' + item['reportDate'] + ' ' + str(item.get('reportName') or '') + ' | '
+            + fmt_money(item.get('revenue')) + ' | '
+            + fmt_pct(item.get('revenueYoY')) + ' | '
+            + fmt_money(item.get('netProfit')) + ' | '
+            + fmt_pct(item.get('netProfitYoY')) + ' | '
+            + fmt_pct(item.get('roe')) + ' | '
+            + fmt_pct(item.get('grossMargin')) + ' | '
+            + fmt_pct(item.get('netMargin')) + ' | '
+            + fmt_pct(item.get('debtRatio')) + ' | '
+            + fmt_money(item.get('operatingCashFlow')) + ' |'
+        )
     if warnings:
         lines.append('')
         lines.append('**数据提示**：' + '；'.join(warnings))

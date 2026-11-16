@@ -68,7 +68,7 @@ function skillsRoot(): string {
 function filesUnder(directory: string, base = directory): SkillSeedFile[] {
   const files: SkillSeedFile[] = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
+    if (entry.name.startsWith('.') || entry.name === '__pycache__' || entry.name === 'node_modules') continue;
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       files.push(...filesUnder(full, base));
@@ -99,7 +99,7 @@ function loadDefinition(directory: string): SkillDefinition {
     throw new Error(`技能包 ${path.basename(directory)} 的 SKILL.md 无效：${parsed.errors.join('；')}`);
   }
   const metadata = parsed.frontmatter.metadata || {};
-  const name = parsed.frontmatter.name;
+  const name = metadata['display-name'] || parsed.frontmatter.name;
   const description = parsed.frontmatter.description;
   if (!name || !description) throw new Error(`技能包 ${path.basename(directory)} 缺少 name/description`);
   return {

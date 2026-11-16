@@ -1,5 +1,5 @@
 ---
-name: 结构化写作规范
+name: structured-writing
 description: 把零散信息写成管理层可读的方案/复盘/通知/邮件，提供一页纸结构、风格检查与可读性脚本。
 version: 1.0.0
 license: internal
@@ -8,6 +8,7 @@ allowed-tools:
   - workspace_write
   - run_skill_script
 metadata:
+  display-name: 结构化写作规范
   category: 写作
   icon: pen
   bind-to: 文档工程师,通用助手

@@ -1,5 +1,5 @@
 ---
-name: 会议纪要与行动项
+name: meeting-actions
 description: 把会议转写/笔记整理为决策、行动项、待定问题与跟进邮件，行动项包含负责人、截止时间与验收标准。
 version: 1.0.0
 license: internal
@@ -7,6 +7,7 @@ allowed-tools:
   - workspace_write
   - run_skill_script
 metadata:
+  display-name: 会议纪要与行动项
   category: 效率
   icon: users
   bind-to: 通用助手,文档工程师

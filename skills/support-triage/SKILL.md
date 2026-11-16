@@ -1,5 +1,5 @@
 ---
-name: 客服工单分级与回复
+name: support-triage
 description: 对客户工单/投诉做 P0-P3 分级、SLA 与升级判断，并生成专业、可执行的客服回复与后续动作。
 version: 1.0.0
 license: internal
@@ -8,6 +8,7 @@ allowed-tools:
   - workspace_write
   - run_skill_script
 metadata:
+  display-name: 客服工单分级与回复
   category: 服务
   icon: headphones
   bind-to: 通用助手

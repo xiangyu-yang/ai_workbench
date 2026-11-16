@@ -1,5 +1,5 @@
 ---
-name: 深度调研方法论
+name: deep-research
 description: 面向决策问题的深度研究：MECE 框架、多源取证、来源审计、交叉验证与带引用的结构化报告。
 version: 1.0.0
 license: internal
@@ -10,6 +10,7 @@ allowed-tools:
   - workspace_write
   - run_skill_script
 metadata:
+  display-name: 深度调研方法论
   category: 研究
   icon: telescope
   bind-to: 深度研究员,Atlas 首席策略官

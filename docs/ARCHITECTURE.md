@@ -217,7 +217,7 @@ while (step < maxSteps) {
 
 ### 6.2 技能（Skill Package）
 - **标准结构**：仓库根目录 `skills/<slug>/` 保存真实 `SKILL.md`（YAML frontmatter：name/description/version/license/allowed-tools）+ `references/` + `scripts/` + `assets/`；`src/server/skills/library.ts` 负责加载为 `SkillDefinition`，再写入数据库发布快照。
-- **源文件优先**：`skills/` 是作者、代码评审、脚本调试的源；运行时仍从数据库快照加载，避免部署时动态读盘和版本漂移。Next standalone 与 Docker 镜像显式复制 `skills/`，可用 `SKILLS_DIR` 覆盖路径。
+- **源文件优先**：`skills/` 是作者、代码评审、脚本调试的源；运行时仍从数据库快照加载，避免部署时动态读盘和版本漂移。frontmatter `name` 使用标准 ASCII slug，中文界面名放在 `metadata.display-name`，由 loader 映射到数据库名称。Next standalone 与 Docker 镜像显式复制 `skills/`，可用 `SKILLS_DIR` 覆盖路径。
 - **渐进式披露**：运行时注入 SKILL.md 正文与文件索引；细节通过只读 `skill_read_file` 按需读取，单文件最多 30k 字符，模型侧再按上下文预算压缩。
 - **滑动窗口**：历史按最近字符预算保留，窗口外旧对话自动生成抽取式摘要（用户目标、助手结论），完整原文由 `history_search` 检索；工具结果完整保存在消息中，模型只接收摘要，可用 `evidence_search/evidence_read` 取回。
 - **上下文预算**：历史、工具结果与技能文件均有限长，并在每轮注入当前请求锚点，避免长网页/长报告把用户请求挤出上下文。

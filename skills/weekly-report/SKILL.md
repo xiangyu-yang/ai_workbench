@@ -1,5 +1,5 @@
 ---
-name: 周报生成器
+name: weekly-report
 description: 根据工作记录和指标数据生成周报/月报/管理层汇报，自动计算环比、目标达成与异常，输出可直接交付的 Markdown。
 version: 1.0.0
 license: internal
@@ -8,6 +8,7 @@ allowed-tools:
   - workspace_write
   - run_skill_script
 metadata:
+  display-name: 周报生成器
   category: 效率
   icon: calendar
   bind-to: 通用助手,数据分析师

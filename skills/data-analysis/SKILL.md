@@ -1,5 +1,5 @@
 ---
-name: 数据分析与洞察
+name: data-analysis
 description: 对 CSV/Excel 导出数据做体检、漏斗/贡献度/同期群分析与异常归因，产出带证据和行动建议的洞察备忘录。
 version: 1.0.0
 license: internal
@@ -9,6 +9,7 @@ allowed-tools:
   - knowledge_search
   - run_skill_script
 metadata:
+  display-name: 数据分析与洞察
   category: 分析
   icon: chart
   bind-to: 数据分析师,通用助手,Atlas 首席策略官

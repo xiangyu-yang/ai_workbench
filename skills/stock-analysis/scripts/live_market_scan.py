@@ -6,6 +6,7 @@
   python3 live_market_scan.py --symbol 美股代码 --days 120 --format json
 """
 import argparse
+import datetime as dt
 import json
 import math
 import statistics
@@ -50,6 +51,32 @@ def atr(highs, lows, closes, window=14):
     for index in range(window, len(ranges)):
         value = (value * (window - 1) + ranges[index]) / window
     return value
+
+
+def ema(values, window):
+    if not values:
+        return []
+    multiplier = 2 / (window + 1)
+    out = [values[0]]
+    for value in values[1:]:
+        out.append((value - out[-1]) * multiplier + out[-1])
+    return out
+
+
+def macd(closes):
+    if len(closes) < 35:
+        return None
+    ema12 = ema(closes, 12)
+    ema26 = ema(closes, 26)
+    dif = [a - b for a, b in zip(ema12, ema26)]
+    dea = ema(dif, 9)
+    hist = [(a - b) * 2 for a, b in zip(dif, dea)]
+    return {
+        'dif': round(dif[-1], 3),
+        'dea': round(dea[-1], 3),
+        'hist': round(hist[-1], 3),
+        'state': 'bullish' if dif[-1] > dea[-1] else 'bearish',
+    }
 
 
 def max_drawdown(values):
@@ -126,6 +153,11 @@ def volume_price_metrics(bars, quote):
     avg20 = mean(previous20)
     vol_ratio5 = volumes[-1] / avg5 if avg5 else None
     vol_ratio20 = volumes[-1] / avg20 if avg20 else None
+    partial_bar = (
+        str(last.get('date') or '')[:10] == dt.date.today().isoformat()
+        and avg20 is not None
+        and volumes[-1] < avg20 * 0.5
+    )
     if vol_ratio20 is not None and vol_ratio20 >= 2.5:
         regime = '爆量'
     elif vol_ratio20 is not None and vol_ratio20 >= 1.5:
@@ -141,7 +173,10 @@ def volume_price_metrics(bars, quote):
 
     expanding = regime in ('温和放量', '明显放量', '爆量')
     shrinking = regime in ('缩量', '地量')
-    if change_pct is None:
+    if partial_bar:
+        regime = '盘中待确认'
+        signal = '盘中量能待确认'
+    elif change_pct is None:
         signal = '数据不足'
     elif change_pct > 0 and expanding:
         signal = '放量上涨'
@@ -173,6 +208,8 @@ def volume_price_metrics(bars, quote):
             divergence = '量价平稳'
     else:
         divergence = '数据不足'
+    if partial_bar:
+        divergence = '盘中待确认'
 
     volume_mean = mean(volumes[-20:])
     volume_std = statistics.pstdev(volumes[-20:]) if len(volumes) >= 20 else 0
@@ -202,6 +239,7 @@ def volume_price_metrics(bars, quote):
         'volumeBasis': '当日成交量 / 前 N 个交易日均量',
         'volumeRegime': regime,
         'volumeRegime20': regime,
+        'partialBar': partial_bar,
         'volumePriceSignal': signal,
         'volumePriceDivergence5d': divergence,
         'price5dPct': round(price5, 2) if price5 is not None else None,
@@ -235,6 +273,16 @@ def main():
     lows = [bar['low'] for bar in bars]
     last = bars[-1]
     volume_metrics = volume_price_metrics(bars, quote)
+    data_warnings = list(market.get('warnings', []))
+    if volume_metrics.get('partialBar'):
+        data_warnings.append('最新日线可能是盘中未完成数据；量比与量价信号仅作盘中参考，收盘后需复核')
+    if fundamentals:
+        try:
+            report_date = dt.date.fromisoformat(str(fundamentals[0].get('reportDate') or '')[:10])
+            if (dt.date.today() - report_date).days > 200:
+                data_warnings.append('最新财报期距今超过 200 天，可能尚未披露新报告或接口延迟')
+        except ValueError:
+            data_warnings.append('无法解析最新财报日期')
     returns = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes)) if closes[i - 1] > 0]
     volatility = statistics.pstdev(returns) * math.sqrt(252) if len(returns) > 1 else None
     sma20 = sma(closes, 20)
@@ -253,23 +301,25 @@ def main():
             factor = 4.0
         eps = latest_f.get('eps')
         annualized_eps = eps * factor if eps else None
-        pe = quote.get('pe')
-        if pe is None and annualized_eps:
-            pe = last['close'] / annualized_eps
-        if pe and annualized_eps:
-            valuation = {
-                'method': 'PE 锚定（非 DCF）',
-                'reportPeriod': report_name,
-                'annualizedEps': round(annualized_eps, 3),
-                'pe': round(pe, 2),
-                'earningsYieldPct': round(100 / pe, 2),
-                'scenarios': [
-                    {'name': '悲观', 'peMultiple': 0.8, 'price': round(annualized_eps * pe * 0.8, 2)},
-                    {'name': '基准', 'peMultiple': 1.0, 'price': round(annualized_eps * pe, 2)},
-                    {'name': '乐观', 'peMultiple': 1.2, 'price': round(annualized_eps * pe * 1.2, 2)},
-                ],
-                'note': '机械估值锚点，不含增长/风险溢价假设，不替代 DCF；仅用于交叉检查。',
-            }
+        if annualized_eps:
+            # 统一用当前价反推的锚定 PE，避免把腾讯/东财的 TTM PE
+            # 与按报告期年化的 EPS 混用。
+            anchor_pe = last['close'] / annualized_eps if annualized_eps else None
+            if anchor_pe:
+                valuation = {
+                    'method': 'PE 锚定（非 DCF；以当前价反推锚定 PE，再乘倍数）',
+                    'reportPeriod': report_name,
+                    'annualizedEps': round(annualized_eps, 3),
+                    'quotePe': quote.get('pe'),
+                    'anchorPe': round(anchor_pe, 2),
+                    'earningsYieldPct': round(100 / anchor_pe, 2),
+                    'scenarios': [
+                        {'name': '悲观', 'peMultiple': 0.8, 'price': round(last['close'] * 0.8, 2)},
+                        {'name': '基准', 'peMultiple': 1.0, 'price': round(last['close'], 2)},
+                        {'name': '乐观', 'peMultiple': 1.2, 'price': round(last['close'] * 1.2, 2)},
+                    ],
+                    'note': '机械价格锚点，仅用于交叉检查；不含增长/风险溢价假设，不替代 DCF。',
+                }
     rsi_value = rsi(closes)
     atr_value = atr(highs, lows, closes)
     recent = closes[-20:]
@@ -301,6 +351,7 @@ def main():
             'sma200': round(sma200, 3) if sma200 else None,
             'trend': trend,
             'rsi14': round(rsi_value, 2) if rsi_value is not None else None,
+            'macd': macd(closes),
             'atr14': round(atr_value, 3) if atr_value else None,
             'annualizedVolPct': round(volatility * 100, 2) if volatility else None,
             'maxDrawdownPct': round(max_drawdown(closes) * 100, 2),
@@ -320,7 +371,7 @@ def main():
         'fundamentals': fundamentals,
         'valuation': valuation,
         'bars': len(bars),
-        'warnings': market.get('warnings', []) + ([('基本面未获取：' + fundamental_error)] if fundamental_error else []),
+        'warnings': data_warnings + ([('基本面未获取：' + fundamental_error)] if fundamental_error else []),
     }
     if args.format == 'json':
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -337,6 +388,8 @@ def main():
         lines.append('- 实时快照：' + str(quote.get('price')) + '，涨跌幅 ' + str(quote.get('changePct')) + '%，成交额 ' + str(quote.get('amount')) + ' ' + result['currency'])
     lines.append('- **量价信号：' + str(vp['volumePriceSignal']) + '**；量能：' + str(vp['volumeRegime']) + '；20 日量比（当日/前20日均量）' + str(vp['volumeRatio20']) + '；5 日量比（当日/前5日均量）' + str(vp['volumeRatio5']))
     lines.append('- 5 日量价：' + str(vp['volumePriceDivergence5d']) + '（价格 ' + str(vp['price5dPct']) + '%，量能 ' + str(vp['volume5dChangePct']) + '%）')
+    if vp.get('partialBar'):
+        lines.append('- **盘中提示**：最新日线可能未收盘，量比与量价信号仅作盘中参考，收盘后需复核。')
     lines.append('- OBV 5 日变化：' + str(vp['obv5dChange']) + '；MFI14：' + str(vp['mfi14']) + '；价格相对 VWAP20：' + str(vp['priceVsVwap20Pct']) + '%')
     if quote.get('turnoverPct') is not None:
         lines.append('- 换手率：' + str(quote.get('turnoverPct')) + '%；行情量比字段：' + str(quote.get('volumeRatio')))
@@ -354,6 +407,8 @@ def main():
     lines.append('')
     lines.append('- 趋势：' + str(tech['trend']) + '；SMA20/60/200：' + str(tech['sma20']) + ' / ' + str(tech['sma60']) + ' / ' + str(tech['sma200']))
     lines.append('- RSI14：' + str(tech['rsi14']) + '；ATR14：' + str(tech['atr14']) + '；年化波动：' + str(tech['annualizedVolPct']) + '%')
+    if tech.get('macd'):
+        lines.append('- MACD：DIF ' + str(tech['macd']['dif']) + '；DEA ' + str(tech['macd']['dea']) + '；柱体 ' + str(tech['macd']['hist']) + '；状态 ' + str(tech['macd']['state']))
     lines.append('- 布林带：' + str(tech['bollinger']['lower']) + ' / ' + str(tech['bollinger']['middle']) + ' / ' + str(tech['bollinger']['upper']))
     lines.append('- 20 日支撑/阻力：' + str(tech['support20']) + ' / ' + str(tech['resistance20']) + '；距支撑 ' + str(tech['distanceSupportPct']) + '%，距阻力 ' + str(tech['distanceResistancePct']) + '%')
     lines.append('- 52 周区间：' + str(tech['low52w']) + ' - ' + str(tech['high52w']) + '；当前分位 ' + str(tech['position52wPct']) + '%')
@@ -367,12 +422,33 @@ def main():
         lines.append('- 营收：' + fmt_money(latest['revenue']) + '，同比 ' + fmt_pct(latest['revenueYoY']) + '；归母净利：' + fmt_money(latest['netProfit']) + '，同比 ' + fmt_pct(latest['netProfitYoY']))
         lines.append('- ROE：' + fmt_pct(latest['roe']) + '；毛利率：' + fmt_pct(latest['grossMargin']) + '；净利率：' + fmt_pct(latest['netMargin']) + '；负债率：' + fmt_pct(latest['debtRatio']))
         lines.append('- EPS：' + str(latest['eps']) + '；BPS：' + str(latest['bps']) + '；经营现金流：' + fmt_money(latest['operatingCashFlow']))
+        lines.append('')
+        lines.append('## 近 8 期财务趋势（报告期累计口径）')
+        lines.append('')
+        lines.append('| 报告期 | 营收 | 营收同比 | 归母净利 | 净利同比 | ROE | 毛利率 | 净利率 | 负债率 | 经营现金流 |')
+        lines.append('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |')
+        for item in result['fundamentals'][:8]:
+            lines.append(
+                '| ' + str(item.get('reportDate') or '') + ' '
+                + str(item.get('reportName') or '') + ' | '
+                + fmt_money(item.get('revenue')) + ' | '
+                + fmt_pct(item.get('revenueYoY')) + ' | '
+                + fmt_money(item.get('netProfit')) + ' | '
+                + fmt_pct(item.get('netProfitYoY')) + ' | '
+                + fmt_pct(item.get('roe')) + ' | '
+                + fmt_pct(item.get('grossMargin')) + ' | '
+                + fmt_pct(item.get('netMargin')) + ' | '
+                + fmt_pct(item.get('debtRatio')) + ' | '
+                + fmt_money(item.get('operatingCashFlow')) + ' |'
+            )
+        lines.append('')
+        lines.append('> 财务数据为报告期累计口径，季度间不可直接年化；同比与环比需结合报告期类型解读。')
     if result.get('valuation'):
         val = result['valuation']
         lines.append('')
         lines.append('## 估值锚点（机械参考，非 DCF）')
         lines.append('')
-        lines.append('- 年化 EPS：' + str(val['annualizedEps']) + '；当前 PE：' + str(val['pe']) + '；盈利收益率：' + str(val['earningsYieldPct']) + '%')
+        lines.append('- 年化 EPS：' + str(val['annualizedEps']) + '；报价 PE：' + str(val.get('quotePe')) + '；锚定 PE：' + str(val.get('anchorPe')) + '；盈利收益率：' + str(val['earningsYieldPct']) + '%')
         lines.append('- 情景价格：' + '；'.join(item['name'] + ' ' + str(item['price']) + '（PE ' + str(item['peMultiple']) + 'x）' for item in val['scenarios']))
         lines.append('- ' + val['note'])
     if result['warnings']:
