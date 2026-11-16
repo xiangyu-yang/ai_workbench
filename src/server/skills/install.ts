@@ -25,7 +25,7 @@ type PackageFileDraft = SkillSeedFile & {
 };
 
 function buildFiles(def: SkillDefinition): PackageFileDraft[] {
-  const markdown = composeSkillMarkdown({
+  const markdown = def.entryContent || composeSkillMarkdown({
     name: def.name,
     description: def.description,
     body: def.body,

@@ -24,6 +24,8 @@ export type SkillDefinition = {
   license: string;
   allowedTools: string[];
   body: string;
+  /** 原始 SKILL.md，保留标准 frontmatter（name/display-name/metadata） */
+  entryContent?: string;
   files: SkillSeedFile[];
   bindTo: string[];
   requiresExecution?: boolean;
@@ -111,6 +113,7 @@ function loadDefinition(directory: string): SkillDefinition {
     license: parsed.frontmatter.license || 'internal',
     allowedTools: parsed.frontmatter.allowedTools || [],
     body: parsed.body,
+    entryContent: fs.readFileSync(skillPath, 'utf8'),
     files: filesUnder(directory),
     bindTo: (metadata['bind-to'] || '')
       .split(',')

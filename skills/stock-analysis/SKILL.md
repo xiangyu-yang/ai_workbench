@@ -17,7 +17,7 @@ metadata:
   display-name: 股票深度分析与预测
   category: 金融
   icon: trending-up
-  bind-to: 深度研究员,数据分析师,Atlas 首席策略官
+  bind-to: 通用助手,深度研究员,数据分析师,Atlas 首席策略官
   requires-execution: "true"
 ---
 
