@@ -352,6 +352,9 @@ export function ChatView({
             if (!threadIdRef.current && payload.threadId) {
               threadIdRef.current = String(payload.threadId);
             }
+            if (payload.mode === 'ask' || payload.mode === 'plan' || payload.mode === 'agent') {
+              setMode(payload.mode);
+            }
             break;
           }
           case 'text':

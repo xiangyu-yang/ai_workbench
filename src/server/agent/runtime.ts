@@ -228,6 +228,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     messageId: assistant.id,
     threadId: params.threadId,
     taskId: params.taskId || undefined,
+    mode,
   });
 
   const recentUserRows = await db

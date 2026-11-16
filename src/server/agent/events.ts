@@ -1,7 +1,7 @@
 import type { CitationPart, MessagePart, MessageStatus, SkillPart } from '@/server/db/schema';
 
 export type RuntimeEvent =
-  | { type: 'meta'; runId: string; messageId: string; threadId?: string; taskId?: string }
+  | { type: 'meta'; runId: string; messageId: string; threadId?: string; taskId?: string; mode?: 'ask' | 'plan' | 'agent' | 'task' }
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
   | { type: 'skill'; part: SkillPart }
