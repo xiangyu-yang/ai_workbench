@@ -18,7 +18,7 @@
 3. 设置 `NODE_ENV=production`，前置 TLS/WAF。
 4. 决定 `MCP_ALLOW_STDIO`：托管集群建议 `false`，仅允许 HTTP/SSE 连接器。
 5. 配置 `TAVILY_API_KEY`（如需联网搜索）与 `TOOL_ALLOWED_HOSTS`（如需访问内网系统）。
-6. 运行迁移 Job，再启动 Web/Worker；确认 `/api/health` 返回 `status: ok`。
+6. 运行迁移 Job，再启动 Web/Worker；确认 `/api/health` 返回 `status: ok`；确认镜像包含 `skills/` 源目录（或用 `SKILLS_DIR` 指向共享只读目录）。
 7. 首次登录后立即修改演示账号密码（或重新创建组织）。
 8. 配置日志采集与 Prometheus 抓取 `/api/metrics`（建议加 `METRICS_TOKEN`）。
 
@@ -105,12 +105,14 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 
 ## 股票行情与专家
 
-- `Atlas 首席策略官` 由 `npm run db:seed-stock-expert` 幂等安装；新组织注册时自动创建，并绑定股票、深度研究、数据分析三个技能。
+- `Atlas 首席策略官` 由 `npm run db:seed-stock-expert` 幂等安装；新组织注册时自动创建，并绑定股票、深度研究、数据分析三个技能。通用助手也绑定股票技能，股票问题会自动加载 `stock-analysis` 并升级执行模式。
 - 股票技能使用 `fetch_market_data.py` / `live_market_scan.py` 拉取腾讯公开行情；A 股基本面来自东方财富结构化接口；需要 Web/Worker 具备访问 `qt.gtimg.cn`、`web.ifzq.gtimg.cn`、`push2his.eastmoney.com`、`datacenter.eastmoney.com` 的出站网络。
 - 多标的推荐先走 `screen_stocks.py`（人工维护的龙头观察池，不是全市场量化筛选）；大盘/指数/跨市场走 `market_overview.py`；单股再走 `live_market_scan.py`。
 - 股票研究禁止通过 `read_url` / `http_request` 抓取财经网页；联网搜索仅在配置 `TAVILY_API_KEY` 时开放，并用于新闻/公告/催化剂，不允许用搜索结果补财务数字。港股/美股没有结构化财务数据时标注“未获取”，不编造财务数字。
 - 行情接口可能限流或变更；脚本失败时应让用户上传 CSV，禁止模型编造当日数据。
 - 输出必须包含数据截止日、来源、5/20 日量比口径、量价组合、情景与风险提示；不构成投资建议。
+- 盘中最新 K 线可能未完成，脚本会标记 `partialBar`；量比和量价信号要求收盘后复核，不能把半日成交量直接判断为“地量”。
+- 深度报告目标 5,000-6,500 汉字、最大 18KB；完整正文写入交付物，聊天只保留 15-20 条核心结论。
 - 工具完整结果保留在消息 `parts` 中，模型侧只接收摘要；需要复盘时用 `evidence_search/evidence_read`，不要要求用户重发或重新抓取网页。
 
 ## 8. 故障排查
@@ -126,6 +128,9 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 | 切换会话后仍出现审批框 | 消息 parts 残留旧的 `pending_approval` | 刷新会话触发审批对账；服务端会将已结束/已处理审批收敛为失效 |
 | 聊天区停在报告标题但无后续 | 摘要被截断，完整正文已写入交付物 | 打开交付物卡片查看完整报告；服务端会自动生成 Markdown 交付物 |
 | 长对话忘记早先结论 | 滑动窗口只保留最近原文 | 让模型用 `history_search` 检索旧结论；精确工具数字用 `evidence_search/evidence_read` |
+| 点击 PDF 没有反应 | 浏览器拦截弹出窗口，或交付物不是 Markdown | 允许本站弹出窗口；PDF 仅对 Markdown 交付物显示；确认后在打印预览里选择“另存为 PDF” |
+| PDF 分页或排版异常 | 打印样式/浏览器差异 | 重新打开交付物并导出；表格建议避免超宽列；必要时用“另存为 PDF”而非直接打印 |
+| 股票分析只加载了一个技能 | 自动选择按专家绑定和问题匹配 | 检查专家是否绑定 `stock-analysis`；通用助手已绑定，其他自定义专家需手动添加股票技能 |
 | MCP 连接失败 | stdio 被禁用、命令不存在、URL 不可达 | 查看连接器卡片错误；本地验证 `node scripts/demo-mcp.mjs` |
 | 知识库检索无结果 | 文档处理失败、嵌入维度不一致 | 文档列表查看状态；召回测试；必要时重传 |
 | `quota_exceeded` (402) | 月度 token 配额 | 设置 → 组织调整配额 |
@@ -139,7 +144,7 @@ npm run db:seed-stock-expert           # 补齐 Atlas 股票专家与应用（�
 npm run db:seed-skills -- --force      # 覆盖同名技能包并生成新版本（会替换包文件）
 ```
 
-内置库源文件在仓库根目录 `skills/<slug>/`（SKILL.md + references/scripts/assets）；`src/server/skills/library.ts` 负责加载，新组织注册时写入数据库快照。升级前运行 `npm run skills:check`，停止应用（PGlite 单进程），备份 `DATA_DIR`；Next standalone 与 Docker 镜像已复制 `skills/`，自定义运行目录可用 `SKILLS_DIR` 覆盖。
+内置库源文件在仓库根目录 `skills/<slug>/`（SKILL.md + references/scripts/assets）；frontmatter `name` 使用标准 ASCII slug，中文界面名在 `metadata.display-name`。`src/server/skills/library.ts` 负责加载，新组织注册时写入数据库快照。升级前运行 `npm run skills:check`，停止应用（PGlite 单进程），备份 `DATA_DIR`；Next standalone 与 Docker 镜像已复制 `skills/`，自定义运行目录可用 `SKILLS_DIR` 覆盖。
 
 ## 技能脚本安全
 

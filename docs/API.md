@@ -61,6 +61,8 @@ Content-Type: application/json
 
 - `status=awaiting_approval` 表示专家调用了需审批的工具。API 调用方需在 Web 界面完成审批，或改用工具策略为 `never` 的专家。
 - 交付物下载：`GET /api/artifacts/{artifactId}?download=1`（需登录会话，暂不支持 API Key）。
+- Markdown 交付物的 PDF 导出在浏览器端完成：前端将渲染后的 Markdown 克隆为独立打印文档，按 A4 排版后打开打印预览，由用户选择“另存为 PDF”。服务端不生成 PDF 二进制文件。
+- 如果自动选择的技能声明了 `requires-execution`，`ask/plan` 会被服务端升级为 `agent`；SSE `meta.mode` 返回实际执行模式，前端据此同步模式。
 
 ## 3. 知识检索
 
@@ -118,13 +120,16 @@ GET /api/tasks/{taskId}
 
 以下接口由 Web 前端使用，使用 HttpOnly 会话 Cookie 鉴权，变更请求需同源 Origin：
 
+内置技能以仓库根目录 `skills/<slug>/` 为源文件，`src/server/skills/library.ts` 加载后写入数据库发布快照；运行时读取数据库，不在请求中直接读盘。部署可用 `SKILLS_DIR` 覆盖源目录，Next standalone 与 Docker 镜像默认复制 `skills/`。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/auth/register` | 注册（可带邀请码） |
 | POST | `/api/auth/login` | 登录 |
-| POST | `/api/chat` | SSE 流式对话；body 支持 `expertId`、`mode`、`skillIds`（null=自动 / []=不使用 / 列表=手动） |
+| POST | `/api/chat` | SSE 流式对话；body 支持 `expertId`、`mode`、`skillIds`（null=自动 / []=不使用 / 列表=手动）；需要脚本的技能可自动把 ask/plan 升级为 agent |
 | POST | `/api/chat/stop` | 按 `messageId` 中断生成 |
 | GET | `/api/threads/{id}/messages` | 消息、审批与交付物快照；用于离开页面后追平流式输出；返回前会自动对账失效的 `pending_approval` 工具 |
+| GET | `/api/artifacts/{id}` | 读取交付物；`?download=1` 下载原文件（浏览器会话鉴权） |
 | POST | `/api/chat/resume` | 审批后恢复 |
 | PATCH | `/api/approvals/{id}` | 批准 / 拒绝 |
 | GET/PATCH/DELETE | `/api/threads[/{id}]` | 会话；GET 支持 `q`、`archived=0/1`、`limit=1..100` |
@@ -206,7 +211,7 @@ POST /api/threads/{id}/stop
 
 | event | data |
 | --- | --- |
-| `meta` | `{runId, messageId, threadId}` |
+| `meta` | `{runId, messageId, threadId, taskId?, mode}`；`mode` 是服务端实际执行模式（ask/plan/agent/task） |
 | `text` | `{delta}` |
 | `reasoning` | `{delta}` |
 | `skill` | `{part:{id,name,version,selection,fileCount,...}}` 本轮加载的技能 |
