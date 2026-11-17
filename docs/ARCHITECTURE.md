@@ -228,11 +228,12 @@ while (step < maxSteps) {
 - **交付物 PDF**：Markdown 交付物支持阅读区预览和 PDF 导出。导出时前端克隆已渲染的预览 HTML 到独立打印文档，使用 A4 页边距、浅色文章样式、表头重复和表格/代码块防跨页规则，再打开浏览器打印预览；由用户选择“另存为 PDF”。服务端不生成 PDF 文件，因此不引入 Chromium/Puppeteer 依赖。
 - **报告收口**：股票技能在工具已返回但模型只输出“开始撰写”等过渡语时，自动追加一次无工具收口并生成可下载的 Markdown 交付物；深度报告目标 5,000-6,500 汉字，最大 18KB。
 - **股票与跨市场工具**：`live_market_scan.py`（行情/量价/8 期基本面/PE 情景）、`screen_stocks.py`（龙头观察池候选）、`market_overview.py`（A/H/US 指数温度计）、`fetch_fundamentals.py`（A 股结构化财务）；股票包共 24 个文件、8 个脚本、10 个 references、5 个 assets。盘中未完成 K 线会标记 `partialBar`，避免把半日成交量误判为地量。
+- **每日趋势技能**：`daily-stock-trend` 独立于长期深度研究，使用 `daily_trend_scan.py` 输出盘前/盘中阶段、缺口、枢轴/R1/R2/S1/S2、ATR、VWAP、量比、趋势和条件式开盘情景；报告目标 1,800-3,000 汉字，禁止套用长期 DCF 模板。
 - **可观测性**：消息新增 `skill` part，记录本次加载的技能、版本、来源与文件数；界面区分「已加载」与「已使用」，显式调用 `skill_read_file` / `run_skill_script` 时标记“已使用”。
 - **脚本执行**：`run_skill_script` 在 `DATA_DIR/skill-runs/{org}/{skill}/{version}` 隔离目录执行，支持 Node/Python/Bash，30s 超时、输出截断、强制人工审批；`SKILL_ALLOW_SCRIPTS=false` 可整体关闭。
 - **发布**：校验 SKILL.md/frontmatter/文件类型与大小 → 生成不可变快照（含全部文件）→ 版本自增；专家按版本绑定。
 - **HTTP Tool Skill**：同一包内通过 manifest 声明 JSON Schema 工具 + 请求模板，支持 `{{param}}` 与 `{{env.VAR}}`。
-- **内置库**：9 个完整技能包，覆盖周报、数据分析、竞品研究、会议行动项、客服分级、深度研究、结构化写作、RFP 投标、股票深度分析与预测；每个都含 references/scripts/assets。
+- **内置库**：10 个完整技能包，覆盖周报、数据分析、竞品研究、会议行动项、客服分级、深度研究、结构化写作、RFP 投标、股票深度分析与预测、每日股价趋势分析；每个都含 references/scripts/assets。
 
 ### 6.2.1 应用中心（Apps）
 - 内部应用：绑定专家，点击进入带应用标识的对话，复用专家、技能、知识与工具治理。
@@ -364,7 +365,7 @@ Prometheus + Grafana + Loki
 - [x] 专家中心：CRUD、模型/温度/步数/工具策略、技能与知识绑定、委派
 - [x] 技能中心：`skills/` 文件系统源包（标准 ASCII name + 中文 display-name）、references/scripts/assets、文件树编辑、校验与版本发布、脚本审批执行
 - [x] 应用中心：内部专家应用 + 外部 AI 工具、分类搜索、最近使用、启停与审计
-- [x] 股票投研：Atlas 首席策略官、A/H/US 个股与指数、实时行情/量价扫描、结构化基本面、龙头观察池筛选、跨市场温度计、估值与概率化情景、证据检索与报告交付物
+- [x] 股票投研：Atlas 首席策略官、A/H/US 个股与指数、实时行情/量价扫描、每日盘前/盘中趋势与关键位、结构化基本面、龙头观察池筛选、跨市场温度计、估值与概率化情景、证据检索与报告交付物
 - [x] 界面主题：Dark / Light 切换，持久化偏好
 - [x] 连接器：MCP stdio / HTTP / SSE、健康检查、工具发现与缓存、加密凭据
 - [x] 知识库：上传解析、分块、嵌入、混合检索、召回测试、对话引用

@@ -37,6 +37,7 @@ async function main() {
   const skillRows = await db.select().from(skills).where(eq(skills.orgId, org.id));
   const byName = new Map(skillRows.map((skill) => [skill.name, skill]));
   const stockSkill = byName.get('股票深度分析与预测');
+  const dailySkill = byName.get('每日股价趋势分析');
   if (!stockSkill) throw new Error('缺少「股票深度分析与预测」技能，请先运行 npm run db:seed-skills -- --force --only 股票深度分析与预测');
 
   let expertRows = await db
@@ -97,6 +98,7 @@ async function main() {
 
   const bindTargets = [
     stockSkill,
+    dailySkill,
     byName.get('深度调研方法论'),
     byName.get('数据分析与洞察'),
   ].filter((skill): skill is NonNullable<typeof stockSkill> => Boolean(skill));

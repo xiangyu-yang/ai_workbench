@@ -41,6 +41,7 @@ const SKILL_ORDER = [
   '结构化写作规范',
   'RFP 投标响应',
   '股票深度分析与预测',
+  '每日股价趋势分析',
 ];
 
 const TEXT_EXT = new Set([

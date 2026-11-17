@@ -69,6 +69,12 @@ function dedupe(tools: RuntimeTool[]): RuntimeTool[] {
 function selectFullSkillNames(packages: SkillPackageRuntime[], query: string): Set<string> {
   if (packages.length <= 2) return new Set(packages.map((pkg) => pkg.name));
   const text = (query || '').toLowerCase();
+  // 当日/开盘/盘中问题只展开“每日趋势”技能，避免同时注入完整的长期股票研究包，
+  // 把 32k 上下文和模型的注意力从当日关键位稀释掉。
+  const dailyTrend = packages.find((pkg) => pkg.name.includes('每日股价趋势'));
+  if (dailyTrend && /(开盘|早盘|盘中|尾盘|今日|今天|当天|日内|短线|当日|早市)/.test(query || '')) {
+    return new Set([dailyTrend.name]);
+  }
   const grams = new Set<string>();
   for (const word of text.match(/[a-z0-9]{2,}|[\u4e00-\u9fa5]{2,4}/g) || []) grams.add(word);
   for (let i = 0; i < text.length - 1; i += 1) {
