@@ -717,6 +717,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     let consecutiveToolErrors = 0;
     let memoryToolCalls = 0;
     let memoryToolMisses = 0;
+    let emptyStepRetries = 0;
     let repeatedStepText = false;
     let liveScanSucceeded = parts.some(
       (part) =>
@@ -793,6 +794,22 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       runIn += result.usage.inputTokens;
       runOut += result.usage.outputTokens;
       lastFinishReason = result.finishReason;
+
+      // 本地思考模型（尤其 qwen3）在工具定义较多、上下文较长时偶发只返回
+      // thinking 或空 content。不要把空响应当成正常完成；先用一条短纠正重试，
+      // 避免界面直接出现“模型未返回内容”。
+      if (!result.text.trim() && !result.toolCalls.length) {
+        if (emptyStepRetries < 2) {
+          emptyStepRetries += 1;
+          llmMessages.push({
+            role: 'user',
+            content:
+              '上一轮没有返回可见内容。请直接输出当前请求的中文分析，不要只输出思考过程；如果已有工具结果，请基于工具结果作答。',
+          });
+          await persist('streaming');
+          continue;
+        }
+      }
 
       const normalizedStep = result.text.replace(/\s+/g, '').trim();
       if (normalizedStep.length > 60) {
