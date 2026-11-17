@@ -727,6 +727,14 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
         String((part.args as Record<string, unknown> | undefined)?.script || '') ===
           'scripts/live_market_scan.py',
     );
+    let dailyScanSucceeded = parts.some(
+      (part) =>
+        part.type === 'tool' &&
+        part.status === 'ok' &&
+        part.name === 'run_skill_script' &&
+        String((part.args as Record<string, unknown> | undefined)?.script || '') ===
+          'scripts/daily_trend_scan.py',
+    );
     const skillReadPaths = new Set(
       parts
         .filter(
@@ -943,6 +951,10 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             call.name === 'run_skill_script' &&
             String((call.args as Record<string, unknown> | undefined)?.script || '') ===
               'scripts/live_market_scan.py';
+          const isDailyScan =
+            call.name === 'run_skill_script' &&
+            String((call.args as Record<string, unknown> | undefined)?.script || '') ===
+              'scripts/daily_trend_scan.py';
           const isSkillRead = call.name === 'skill_read_file' || call.name === 'read_skill_file';
           const isMemoryCall = ['evidence_search', 'evidence_read', 'history_search'].includes(call.name);
           if (isMemoryCall) {
@@ -994,6 +1006,18 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             });
             continue;
           }
+          if (stockResearch && !multiStockRequest && dailyScanSucceeded && isDailyScan) {
+            part.status = 'ok';
+            part.summary = '已获取当日趋势数据，跳过重复扫描';
+            part.output = '当日趋势只需扫描一次；请直接基于已有数据完成盘前/盘中简报。';
+            loopGuard = true;
+            forceBreak = true;
+            llmMessages.push({
+              role: 'user',
+              content: '当前是单只股票的当日趋势分析，请不要重复调用 daily_trend_scan，直接完成简报。',
+            });
+            continue;
+          }
           const signature = callSignature(call);
           const repeatCount = (toolCallCounts.get(signature) || 0) + 1;
           toolCallCounts.set(signature, repeatCount);
@@ -1040,6 +1064,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           send({ type: 'tool_result', id: call.id, name: call.name, status: 'ok', summary: '执行中…' });
           const toolResult = await executeTool(call, tool);
           if (!toolResult.isError && isLiveScan) liveScanSucceeded = true;
+          if (!toolResult.isError && isDailyScan) dailyScanSucceeded = true;
           if (!toolResult.isError && isSkillRead) skillReadPaths.add(skillReadPath);
           if (!toolResult.isError && call.name === 'workspace_write') forceBreak = true;
           if (isMemoryCall) {
@@ -1185,7 +1210,15 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   // 股票报告常见问题：模型读完资料后只输出“开始撰写”就结束，没有正文或交付物。
   // 这里做一次无工具收口，强制生成可读报告，避免界面看起来卡在过渡语。
   const currentText = textOfParts(parts).trim();
-  const loadedStockSkill = toolset.skills.some((skill) => skill.name.includes('股票深度分析'));
+  const loadedStockSkill = toolset.skills.some(
+    (skill) => skill.full && skill.name.includes('股票深度分析'),
+  );
+  const loadedDailySkill = toolset.skills.some(
+    (skill) => skill.full && skill.name.includes('每日股价趋势'),
+  );
+  const dailyRequest = /(开盘|早盘|盘中|尾盘|今日|今天|当天|短线|当日|早市)/.test(lastUserText(llmMessages));
+  const useDailyFinalizer = loadedDailySkill && (dailyRequest || !loadedStockSkill);
+  const loadedEquitySkill = loadedStockSkill || loadedDailySkill;
   const wroteArtifact = parts.some(
     (part) => part.type === 'tool' && part.name === 'workspace_write' && part.status === 'ok',
   );
@@ -1196,7 +1229,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   if (
     !cancelled &&
     !errorMessage &&
-    loadedStockSkill &&
+    loadedEquitySkill &&
     hasToolResult &&
     !wroteArtifact &&
     (looksLikeProgressOnly || (loopGuard && currentText.length < 1_200))
@@ -1215,12 +1248,13 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           ...llmMessages,
           {
             role: 'user',
-            content:
-              '你已完成数据获取。现在不要调用工具，直接输出最终的中文深度研究报告，4000-6000 字。必须包含：结论卡片、行情快照与量价诊断、生意模式/行业格局、护城河/管理层、财务质量、估值（PE 锚定/反向 DCF/相对估值/敏感性）、下季度与 12 个月情景预测、催化剂/风险表、技术面执行参考、反方观点/数据缺口、来源与免责声明。不要只写“开始撰写”，不要复述工具参数。',
+            content: useDailyFinalizer
+              ? '你已完成数据获取。现在不要调用工具，直接输出中文“每日股价趋势”简报，1800-3000 字。必须以“# 标的名称 每日股价趋势”作为一级标题，然后包含：数据状态与阶段、今日结论、枢轴/R1/R2/S1/S2、20日支撑阻力、ATR、高开/平开/低开三种情景及触发/观察/失效、盘中量能/VWAP验证、1-5日观察、催化剂/风险、数据缺口与一次免责声明。不要写长期 DCF、完整三张财务报表或深度估值模板；不要只写“开始撰写”，不要复述工具参数。'
+              : '你已完成数据获取。现在不要调用工具，直接输出最终的中文深度研究报告，4000-6000 字。必须包含：结论卡片、行情快照与量价诊断、生意模式/行业格局、护城河/管理层、财务质量、估值（PE 锚定/反向 DCF/相对估值/敏感性）、下季度与 12 个月情景预测、催化剂/风险表、技术面执行参考、反方观点/数据缺口、来源与免责声明。不要只写“开始撰写”，不要复述工具参数。',
           },
         ],
         temperature: expert?.temperature ?? 0.4,
-        maxTokens: 8192,
+        maxTokens: useDailyFinalizer ? 6144 : 8192,
         signal: params.signal,
         onEvent: (event) => {
           if (event.type === 'text') {
@@ -1253,23 +1287,33 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   if (
     !cancelled &&
     !errorMessage &&
-    loadedStockSkill &&
+    loadedEquitySkill &&
     !wroteArtifact &&
     !parts.some((part) => part.type === 'artifact') &&
     finalStockText.length > 600
   ) {
     try {
       const normalized = finalStockText.replace(/(^|[^\n])(#{1,3}\s+)/g, '$1\n\n$2').trim();
+      const requestText = lastUserText(llmMessages).trim();
+      const dailySubject = requestText
+        .split(/(今天|今日|当天|早盘|开盘|盘中|走势|分析|预测)/)[0]
+        .replace(/[，,。？?：:]/g, '')
+        .trim();
+      const firstHeadingIndex = normalized.search(/^#{1,3}[ \t]+/m);
+      const reportBody = firstHeadingIndex >= 0 ? normalized.slice(firstHeadingIndex) : normalized;
+      const dailyHeading = (dailySubject || '个股') + ' 每日股价趋势';
       const headings = [...normalized.matchAll(/^#{1,3}[ \t]+(.+)$/gm)];
       const reportHeading =
         headings.find((match) => {
           const text = match[1].trim();
-          return /(报告|分析|研究|预测|策略)/.test(text) && !/^(第[一二三四五六七八九十\d]+步|候选)/.test(text);
+          return /(报告|分析|研究|预测|策略|趋势|简报)/.test(text) && !/^(第[一二三四五六七八九十\d]+步|候选)/.test(text);
         }) || headings.find((match) => !/^(第[一二三四五六七八九十]+步|候选)/.test(match[1].trim()));
-      const artifactText = reportHeading?.index
-        ? normalized.slice(reportHeading.index).trim()
-        : normalized;
-      const heading = reportHeading?.[1]?.trim().replace(/^#+\s*/, '') || '股票分析报告';
+      const artifactText = useDailyFinalizer
+        ? '# ' + dailyHeading + '\n\n' + reportBody
+        : (reportHeading?.index ? normalized.slice(reportHeading.index).trim() : normalized);
+      const heading = useDailyFinalizer
+        ? dailyHeading
+        : (reportHeading?.[1]?.trim().replace(/^#+\s*/, '') || '股票分析报告');
       const safeName = heading.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
       const name = safeName + '_' + new Date().toISOString().slice(0, 10) + '.md';
       const artifact = await createArtifact({
