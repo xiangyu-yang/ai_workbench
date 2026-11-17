@@ -14,6 +14,7 @@ import sys
 
 from fetch_market_data import fetch_market, normalize_symbol
 from fetch_fundamentals import fetch_f10, fmt_money, fmt_pct, item_of
+from fund_flow import fetch_fund_flow, fmt_flow
 
 
 def sma(values, window):
@@ -268,6 +269,13 @@ def main():
             fundamentals = [item_of(row) for row in rows]
         except Exception as error:
             fundamental_error = str(error)
+    fund_flow = None
+    fund_flow_error = ''
+    if market['market'] == 'cn':
+        try:
+            fund_flow = fetch_fund_flow(normalize_symbol(args.symbol), 10)
+        except Exception as error:
+            fund_flow_error = str(error)
     closes = [bar['close'] for bar in bars]
     highs = [bar['high'] for bar in bars]
     lows = [bar['low'] for bar in bars]
@@ -370,8 +378,10 @@ def main():
         },
         'fundamentals': fundamentals,
         'valuation': valuation,
+        'fundFlow': fund_flow,
+        'fundFlowError': fund_flow_error,
         'bars': len(bars),
-        'warnings': data_warnings + ([('基本面未获取：' + fundamental_error)] if fundamental_error else []),
+        'warnings': data_warnings + ([('基本面未获取：' + fundamental_error)] if fundamental_error else []) + ([('资金流向未获取：' + fund_flow_error)] if fund_flow_error else []),
     }
     if args.format == 'json':
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -451,6 +461,26 @@ def main():
         lines.append('- 年化 EPS：' + str(val['annualizedEps']) + '；报价 PE：' + str(val.get('quotePe')) + '；锚定 PE：' + str(val.get('anchorPe')) + '；盈利收益率：' + str(val['earningsYieldPct']) + '%')
         lines.append('- 情景价格：' + '；'.join(item['name'] + ' ' + str(item['price']) + '（PE ' + str(item['peMultiple']) + 'x）' for item in val['scenarios']))
         lines.append('- ' + val['note'])
+    if result.get('fundFlow'):
+        flow = result['fundFlow']
+        lines.append('')
+        lines.append('## 资金流向（A股，东方财富口径）')
+        lines.append('')
+        lines.append('- 数据日期：' + str(flow['date']) + '；主力' + ('净流入' if flow['mainDirection'] == '净流入' else flow['mainDirection']) + '：' + fmt_flow(flow['mainNet']) + '；主力占比：' + str(flow['mainRatioPct']) + '%')
+        lines.append('- 超大单/大单/中单/小单：' + fmt_flow(flow['superLargeNet']) + ' / ' + fmt_flow(flow['largeNet']) + ' / ' + fmt_flow(flow['mediumNet']) + ' / ' + fmt_flow(flow['smallNet']))
+        lines.append('- 5 日主力累计：' + fmt_flow(flow['mainNet5']) + '；10 日主力累计：' + fmt_flow(flow['mainNet10']))
+        lines.append('- 5 日散户累计（中小单）：' + fmt_flow(flow['retailNet5']) + '；10 日散户累计：' + fmt_flow(flow['retailNet10']))
+        lines.append('- 口径：主力=超大单+大单；散户≈中单+小单；按成交金额分类，不等同真实投资者身份。')
+    elif result['market'] == 'cn':
+        lines.append('')
+        lines.append('## 资金流向（A股）')
+        lines.append('')
+        lines.append('- 未获取：' + (result.get('fundFlowError') or '接口无返回'))
+    else:
+        lines.append('')
+        lines.append('## 资金流向')
+        lines.append('')
+        lines.append('- 港股/美股没有统一的主力/散户资金流口径；本报告不编造该指标。')
     if result['warnings']:
         lines.append('')
         lines.append('**数据提示**：' + '；'.join(result['warnings']))

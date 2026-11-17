@@ -227,7 +227,7 @@ while (step < maxSteps) {
 - **交付物摘要**：完整报告写入交付物后，聊天只保留核心摘要；若摘要仍被截断，界面提示打开交付物而不是显示空段落。
 - **交付物 PDF**：Markdown 交付物支持阅读区预览和 PDF 导出。导出时前端克隆已渲染的预览 HTML 到独立打印文档，使用 A4 页边距、浅色文章样式、表头重复和表格/代码块防跨页规则，再打开浏览器打印预览；由用户选择“另存为 PDF”。服务端不生成 PDF 文件，因此不引入 Chromium/Puppeteer 依赖。
 - **报告收口**：股票技能在工具已返回但模型只输出“开始撰写”等过渡语时，自动追加一次无工具收口并生成可下载的 Markdown 交付物；深度报告目标 5,000-6,500 汉字，最大 18KB。
-- **股票与跨市场工具**：`live_market_scan.py`（行情/量价/8 期基本面/PE 情景）、`screen_stocks.py`（龙头观察池候选）、`market_overview.py`（A/H/US 指数温度计）、`fetch_fundamentals.py`（A 股结构化财务）；股票包共 24 个文件、8 个脚本、10 个 references、5 个 assets。盘中未完成 K 线会标记 `partialBar`，避免把半日成交量误判为地量。
+- **股票与跨市场工具**：`live_market_scan.py`（行情/量价/8 期基本面/PE 情景/A 股资金流）、`fund_flow.py`（A 股主力与散户资金流）、`screen_stocks.py`（龙头观察池候选）、`market_overview.py`（A/H/US 指数温度计）、`fetch_fundamentals.py`（A 股结构化财务）；股票包共 24 个文件、9 个脚本、10 个 references、5 个 assets。盘中未完成 K 线会标记 `partialBar`，避免把半日成交量误判为地量。
 - **每日趋势技能**：`daily-stock-trend` 独立于长期深度研究，使用 `daily_trend_scan.py` 输出盘前/盘中阶段、缺口、枢轴/R1/R2/S1/S2、ATR、VWAP、量比、趋势和条件式开盘情景；报告目标 1,800-3,000 汉字，禁止套用长期 DCF 模板。
 - **可观测性**：消息新增 `skill` part，记录本次加载的技能、版本、来源与文件数；界面区分「已加载」与「已使用」，显式调用 `skill_read_file` / `run_skill_script` 时标记“已使用”。
 - **脚本执行**：`run_skill_script` 在 `DATA_DIR/skill-runs/{org}/{skill}/{version}` 隔离目录执行，支持 Node/Python/Bash，30s 超时、输出截断、强制人工审批；`SKILL_ALLOW_SCRIPTS=false` 可整体关闭。

@@ -106,7 +106,7 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 ## 股票行情与专家
 
 - `Atlas 首席策略官` 由 `npm run db:seed-stock-expert` 幂等安装；新组织注册时自动创建，并绑定股票深度分析、每日股价趋势、深度研究、数据分析四个技能。通用助手也绑定股票深度技能，股票问题会自动加载 `stock-analysis` 并升级执行模式；Atlas 的当日/开盘问题优先使用 `daily-stock-trend`。
-- 股票技能使用 `fetch_market_data.py` / `live_market_scan.py` 拉取腾讯公开行情；A 股基本面来自东方财富结构化接口；需要 Web/Worker 具备访问 `qt.gtimg.cn`、`web.ifzq.gtimg.cn`、`push2his.eastmoney.com`、`datacenter.eastmoney.com` 的出站网络。
+- 股票技能使用 `fetch_market_data.py` / `live_market_scan.py` 拉取腾讯公开行情；A 股基本面与资金流来自东方财富结构化接口；需要 Web/Worker 具备访问 `qt.gtimg.cn`、`web.ifzq.gtimg.cn`、`push2his.eastmoney.com`、`datacenter.eastmoney.com` 的出站网络。
 - 多标的推荐先走 `screen_stocks.py`（人工维护的龙头观察池，不是全市场量化筛选）；大盘/指数/跨市场走 `market_overview.py`；单股长期深研走 `live_market_scan.py`；当日/开盘/盘中趋势走 `daily_trend_scan.py`。
 - 股票研究禁止通过 `read_url` / `http_request` 抓取财经网页；联网搜索仅在配置 `TAVILY_API_KEY` 时开放，并用于新闻/公告/催化剂，不允许用搜索结果补财务数字。港股/美股没有结构化财务数据时标注“未获取”，不编造财务数字。
 - 行情接口可能限流或变更；脚本失败时应让用户上传 CSV，禁止模型编造当日数据。
