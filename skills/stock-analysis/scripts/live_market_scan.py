@@ -271,11 +271,10 @@ def main():
             fundamental_error = str(error)
     fund_flow = None
     fund_flow_error = ''
-    if market['market'] == 'cn':
-        try:
-            fund_flow = fetch_fund_flow(normalize_symbol(args.symbol), 10)
-        except Exception as error:
-            fund_flow_error = str(error)
+    try:
+        fund_flow = fetch_fund_flow(normalize_symbol(args.symbol), 10)
+    except Exception as error:
+        fund_flow_error = str(error)
     closes = [bar['close'] for bar in bars]
     highs = [bar['high'] for bar in bars]
     lows = [bar['low'] for bar in bars]
@@ -464,23 +463,18 @@ def main():
     if result.get('fundFlow'):
         flow = result['fundFlow']
         lines.append('')
-        lines.append('## 资金流向（A股，东方财富口径）')
+        lines.append('## 资金流向（A/H/US，东方财富口径）')
         lines.append('')
-        lines.append('- 数据日期：' + str(flow['date']) + '；主力' + ('净流入' if flow['mainDirection'] == '净流入' else flow['mainDirection']) + '：' + fmt_flow(flow['mainNet']) + '；主力占比：' + str(flow['mainRatioPct']) + '%')
-        lines.append('- 超大单/大单/中单/小单：' + fmt_flow(flow['superLargeNet']) + ' / ' + fmt_flow(flow['largeNet']) + ' / ' + fmt_flow(flow['mediumNet']) + ' / ' + fmt_flow(flow['smallNet']))
+        lines.append('- 数据日期：' + str(flow['date']) + '；市场/币种：' + str(flow['market']) + ' / ' + str(flow['currency']) + '；主力' + ('净流入' if flow['mainDirection'] == '净流入' else flow['mainDirection']) + '：' + fmt_flow(flow['mainNet']) + ' ' + str(flow['currency']) + '；主力占比：' + str(flow['mainRatioPct']) + '%')
+        lines.append('- 超大单/大单/中单/小单（' + str(flow['currency']) + '）：' + fmt_flow(flow['superLargeNet']) + ' / ' + fmt_flow(flow['largeNet']) + ' / ' + fmt_flow(flow['mediumNet']) + ' / ' + fmt_flow(flow['smallNet']))
         lines.append('- 5 日主力累计：' + fmt_flow(flow['mainNet5']) + '；10 日主力累计：' + fmt_flow(flow['mainNet10']))
         lines.append('- 5 日散户累计（中小单）：' + fmt_flow(flow['retailNet5']) + '；10 日散户累计：' + fmt_flow(flow['retailNet10']))
         lines.append('- 口径：主力=超大单+大单；散户≈中单+小单；按成交金额分类，不等同真实投资者身份。')
-    elif result['market'] == 'cn':
-        lines.append('')
-        lines.append('## 资金流向（A股）')
-        lines.append('')
-        lines.append('- 未获取：' + (result.get('fundFlowError') or '接口无返回'))
     else:
         lines.append('')
-        lines.append('## 资金流向')
+        lines.append('## 资金流向（A/H/US）')
         lines.append('')
-        lines.append('- 港股/美股没有统一的主力/散户资金流口径；本报告不编造该指标。')
+        lines.append('- 未获取：' + (result.get('fundFlowError') or '接口无返回'))
     if result['warnings']:
         lines.append('')
         lines.append('**数据提示**：' + '；'.join(result['warnings']))

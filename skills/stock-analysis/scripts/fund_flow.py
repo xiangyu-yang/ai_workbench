@@ -33,12 +33,15 @@ def http_json(url):
         return json.loads(response.read().decode('utf-8', errors='ignore'))
 
 
-def secid_of(resolved):
-    if resolved['market'] != 'cn':
-        raise ValueError('资金流向仅支持 A 股；港股/美股没有统一的散户/主力口径')
-    suffix = resolved['display'].split('.')[-1]
-    market_id = '1' if suffix == 'SH' else '0'
-    return market_id + '.' + resolved['code']
+def secids_of(resolved):
+    code = resolved['code']
+    if resolved['market'] == 'cn':
+        suffix = resolved['display'].split('.')[-1]
+        return ['1.' + code] if suffix == 'SH' else ['0.' + code]
+    if resolved['market'] == 'hk':
+        return ['116.' + code]
+    # 美股：东方财富按交易所使用 105/106/107，依次探测。
+    return ['105.' + code, '106.' + code, '107.' + code]
 
 
 def to_float(value, default=None):
@@ -50,20 +53,29 @@ def to_float(value, default=None):
 
 def fetch_fund_flow(resolved, days=10):
     resolved = normalize_symbol(resolved) if isinstance(resolved, str) else resolved
-    secid = secid_of(resolved)
     limit = max(5, min(int(days), 30))
-    url = (
-        'https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get'
-        '?lmt=' + str(limit) +
-        '&klt=101&fields1=f1,f2,f3,f7'
-        '&fields2=f51,f52,f53,f54,f55,f56,f57'
-        '&secid=' + secid
-    )
-    data = http_json(url)
-    node = data.get('data') or {}
-    rows = node.get('klines') or []
+    node = {}
+    rows = []
+    last_error = ''
+    for secid in secids_of(resolved):
+        url = (
+            'https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get'
+            '?lmt=' + str(limit) +
+            '&klt=101&fields1=f1,f2,f3,f7'
+            '&fields2=f51,f52,f53,f54,f55,f56,f57'
+            '&secid=' + secid
+        )
+        try:
+            data = http_json(url)
+            candidate = data.get('data') or {}
+            candidate_rows = candidate.get('klines') or []
+            if candidate_rows:
+                node, rows = candidate, candidate_rows
+                break
+        except Exception as error:
+            last_error = str(error)
     if not rows:
-        raise ValueError('资金流向接口没有返回数据（可能停牌、北交所不支持或接口限流）')
+        raise ValueError('资金流向接口没有返回数据（可能停牌、接口限流或该标的没有资金流数据）' + (('：' + last_error) if last_error else ''))
     history = []
     for line in rows:
         parts = str(line).split(',')
@@ -99,6 +111,8 @@ def fetch_fund_flow(resolved, days=10):
         return round(sum(values), 2) if values else None
     return {
         'source': 'eastmoney-fund-flow',
+        'market': resolved['market'],
+        'currency': resolved['currency'],
         'code': node.get('code') or resolved['code'],
         'name': node.get('name') or resolved['display'],
         'date': latest['date'],
@@ -118,6 +132,7 @@ def fetch_fund_flow(resolved, days=10):
         'history': history,
         'warnings': [
             '主力=超大单+大单，散户≈中单+小单；这是按成交金额分类，不等同于真实投资者身份',
+            'A/H/US 的订单金额分档口径可能不同，跨市场不要直接比较绝对金额',
             '盘中最新一天的资金流是动态数据，收盘后才完整',
         ],
     }
@@ -148,8 +163,8 @@ def main():
     lines = [
         '# ' + str(flow['name']) + '（' + str(flow['code']) + '）资金流向',
         '',
-        '- 数据日期：' + str(flow['date']) + '；来源：东方财富公开资金流接口',
-        '- 主力' + ('净流入' if flow['mainDirection'] == '净流入' else flow['mainDirection']) + '：' + fmt_flow(flow['mainNet']) + '；主力占比：' + str(flow['mainRatioPct']) + '%',
+        '- 数据日期：' + str(flow['date']) + '；市场/币种：' + str(flow['market']) + ' / ' + str(flow['currency']) + '；来源：东方财富公开资金流接口',
+        '- 主力' + ('净流入' if flow['mainDirection'] == '净流入' else flow['mainDirection']) + '：' + fmt_flow(flow['mainNet']) + ' ' + str(flow['currency']) + '；主力占比：' + str(flow['mainRatioPct']) + '%',
         '- 散户' + ('净流入' if flow['retailDirection'] == '净流入' else flow['retailDirection']) + '（中小单）：' + fmt_flow(flow['retailNet']),
         '- 超大单/大单/中单/小单：' + fmt_flow(flow['superLargeNet']) + ' / ' + fmt_flow(flow['largeNet']) + ' / ' + fmt_flow(flow['mediumNet']) + ' / ' + fmt_flow(flow['smallNet']),
         '- 5 日主力累计：' + fmt_flow(flow['mainNet5']) + '；10 日主力累计：' + fmt_flow(flow['mainNet10']),

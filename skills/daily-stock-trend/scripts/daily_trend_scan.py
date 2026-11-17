@@ -243,11 +243,10 @@ def main():
 
     fund_flow = None
     fund_flow_error = ''
-    if market_data['market'] == 'cn':
-        try:
-            fund_flow = fetch_fund_flow(normalize_symbol(args.symbol), 10)
-        except Exception as error:
-            fund_flow_error = str(error)
+    try:
+        fund_flow = fetch_fund_flow(normalize_symbol(args.symbol), 10)
+    except Exception as error:
+        fund_flow_error = str(error)
 
     warnings = list(market_data.get('warnings', []))
     phase, phase_note = phase_of(
@@ -337,17 +336,17 @@ def main():
             '| ' + scenario['name'] + ' | ' + scenario['trigger'] + ' | ' + scenario['observe'] + ' | ' + scenario['invalidation'] + ' | ' + scenario['probability'] + ' |'
         )
     lines.append('')
-    lines.append('## 资金流向（A股，东方财富口径）')
+    lines.append('## 资金流向（A/H/US，东方财富口径）')
     if fund_flow:
-        lines.append('- 数据日期：' + str(fund_flow['date']) + '；主力' + ('净流入' if fund_flow['mainDirection'] == '净流入' else fund_flow['mainDirection']) + '：' + fmt_flow(fund_flow['mainNet']) + '；主力占比：' + str(fund_flow['mainRatioPct']) + '%')
-        lines.append('- 超大单/大单/中单/小单：' + fmt_flow(fund_flow['superLargeNet']) + ' / ' + fmt_flow(fund_flow['largeNet']) + ' / ' + fmt_flow(fund_flow['mediumNet']) + ' / ' + fmt_flow(fund_flow['smallNet']))
+        lines.append('- 数据日期：' + str(fund_flow['date']) + '；市场/币种：' + str(fund_flow['market']) + ' / ' + str(fund_flow['currency']) + '；主力' + ('净流入' if fund_flow['mainDirection'] == '净流入' else fund_flow['mainDirection']) + '：' + fmt_flow(fund_flow['mainNet']) + ' ' + str(fund_flow['currency']) + '；主力占比：' + str(fund_flow['mainRatioPct']) + '%')
+        lines.append('- 超大单/大单/中单/小单（' + str(fund_flow['currency']) + '）：' + fmt_flow(fund_flow['superLargeNet']) + ' / ' + fmt_flow(fund_flow['largeNet']) + ' / ' + fmt_flow(fund_flow['mediumNet']) + ' / ' + fmt_flow(fund_flow['smallNet']))
         lines.append('- 5 日主力累计：' + fmt_flow(fund_flow['mainNet5']) + '；10 日主力累计：' + fmt_flow(fund_flow['mainNet10']))
         lines.append('- 5 日散户累计（中小单）：' + fmt_flow(fund_flow['retailNet5']) + '；10 日散户累计：' + fmt_flow(fund_flow['retailNet10']))
         lines.append('- 口径：主力=超大单+大单；散户≈中单+小单；按成交金额分类，不等同真实投资者身份。盘中最新一天为动态数据。')
     elif fund_flow_error:
         lines.append('- 未获取：' + fund_flow_error)
     else:
-        lines.append('- 港股/美股没有统一的主力/散户资金流口径；本报告不编造该指标。')
+        lines.append('- 未获取：东方财富资金流接口没有返回该标的的数据；本报告不编造指标。')
 
     lines.append('')
     lines.append('## 基本面与数据缺口')

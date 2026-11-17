@@ -77,7 +77,7 @@ npm run dev       # http://localhost:3100
 - **标准结构**：`skills/` 下以真实目录保存 `SKILL.md`（YAML frontmatter + 方法正文）、`references/`、`scripts/`、`assets/`；`name` 使用标准 ASCII slug，中文界面名放在 `metadata.display-name`。界面支持在线文件树编辑与资源上传。内置包由 `npm run db:seed-skills` 写入数据库发布快照，运行时不直接读磁盘。
 - **内置 10 个完整技能包**（每个都含 references/scripts/assets）：周报生成器、数据分析与洞察、竞品研究、会议纪要与行动项、客服工单分级与回复、深度调研方法论、结构化写作规范、RFP 投标响应、股票深度分析与预测、每日股价趋势分析。
 - **Atlas 首席策略官**：预置股票专家，绑定股票深度分析、每日股价趋势、深度研究、数据分析四个技能；通用助手也绑定股票深度技能，股票问题会自动加载并切换到执行。覆盖 A/H/美股个股、指数、大盘、风格轮动、当日开盘/盘中趋势、估值与概率化情景。
-- 股票技能内置 `fetch_market_data.py`、`live_market_scan.py`、`screen_stocks.py`、`market_overview.py`、`fetch_fundamentals.py`：实时行情、量价诊断、A 股 8 期基本面、A 股主力/散户资金流、龙头观察池筛选、A/H/US 指数温度计；不依赖付费行情 API。每日趋势技能另含 `daily_trend_scan.py`，输出盘前/盘中的缺口、枢轴、R1/R2/S1/S2、ATR、量比与条件式情景。
+- 股票技能内置 `fetch_market_data.py`、`live_market_scan.py`、`screen_stocks.py`、`market_overview.py`、`fetch_fundamentals.py`：实时行情、量价诊断、A 股 8 期基本面、A/H/US 主力/散户资金流、龙头观察池筛选、A/H/US 指数温度计；不依赖付费行情 API。每日趋势技能另含 `daily_trend_scan.py`，输出盘前/盘中的缺口、枢轴、R1/R2/S1/S2、ATR、量比与条件式情景。
 - **深度投研工作流**：问“今天/开盘/盘中/未来1-5日怎么走”优先走 `daily_trend_scan`；长期个股深研走 `live_market_scan`；大盘走 `market_overview`；多标的先 `screen_stocks` 生成候选池，再对最多 3 只做量价与基本面核验；证据不足时标注“未获取/需核验”，不把网页抓取结果当财务事实。
 - 股票技能按“当前用户消息”解析标的：支持代码或中文名称，中文名称通过公开搜索接口解析为代码，不把示例代码写死；港股/美股无结构化财务时明确标注缺口，禁止编造财务数字。
 - **上下文与证据**：最近对话走滑动窗口，滑出窗口的旧对话生成抽取式摘要；完整历史与工具结果保存在消息/交付物中，通过 `history_search`、`evidence_search`、`evidence_read` 按需取回，避免 32k 上下文被旧报告或巨型工具结果挤爆。
