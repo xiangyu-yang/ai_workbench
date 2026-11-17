@@ -132,7 +132,10 @@ def main():
     reference_bar = bars[-2] if partial_bar and len(bars) > 1 else bars[-1]
     current_price = quote.get('price') or bars[-1]['close']
     previous_close = quote.get('prevClose') or reference_bar['close']
-    gap_pct = pct(current_price, previous_close)
+    # 盘前没有“今日开盘缺口”这个事实：上一交易日收盘价之间的差不是今日缺口。
+    # 只有已经进入今天交易时段，才计算相对昨收的缺口。
+    premarket = str(bars[-1].get('date') or '')[:10] < dt.date.today().isoformat()
+    gap_pct = None if premarket else pct(current_price, previous_close)
     volume_ratio20 = volumes[-1] / avg20 if avg20 else None
     volume_state = (
         '盘中待确认'
@@ -196,11 +199,13 @@ def main():
     direction = '偏多' if bullish else ('偏空' if bearish else '震荡')
     confidence = '中' if trend in ('bullish', 'bearish') else '低'
 
-    opening = '平开'
+    opening = '待开盘'
     if gap_pct is not None and gap_pct >= 1:
         opening = '高开'
     elif gap_pct is not None and gap_pct <= -1:
         opening = '低开'
+    elif gap_pct is not None:
+        opening = '平开'
 
     scenarios = [
         {
@@ -243,6 +248,8 @@ def main():
         str(quote.get('quoteTime') or ''),
     )
     warnings.append(phase_note)
+    if premarket:
+        warnings.append('尚未开盘：当前只有上一交易日收盘/盘前参考数据，今日缺口要等开盘后确认')
     if partial_bar:
         warnings.append('盘中未完成 K 线：量比与全天成交额不能作为收盘结论')
     if gap_pct is not None and abs(gap_pct) >= 2:
@@ -293,7 +300,7 @@ def main():
         '',
         '- 数据时间：' + (result['quoteTime'] or '未获取') + '；最新日线：' + result['lastDate'] + '；来源：' + result['source'],
         '- 当前/盘前参考价：' + str(result['currentPrice']) + ' ' + result['currency'] + '；昨收/参考收盘：' + str(result['previousClose']) + '；阶段：' + result['phase'],
-        '- 涨跌幅：' + str(result['changePct']) + '%；缺口：' + (str(result['gapPct']) + '%' if result['gapPct'] is not None else '未获取') + '；开盘类型：' + result['openingType'],
+        '- ' + ('上一交易日涨跌幅：' if premarket else '涨跌幅：') + str(result['changePct']) + '%；缺口：' + (str(result['gapPct']) + '%' if result['gapPct'] is not None else '未开盘/未获取') + '；开盘类型：' + result['openingType'],
         '- 20 日量比：' + (str(result['volumeRatio20']) if result['volumeRatio20'] is not None else '未获取') + '；量能：' + result['volumeState'],
         '',
         '## 今日关键位',

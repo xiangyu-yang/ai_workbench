@@ -1,7 +1,7 @@
 ---
 name: daily-stock-trend
 description: 面向单只股票/ETF的当日与1-5日趋势分析：盘前、集合竞价、开盘、盘中、收盘后，结合缺口、量价、VWAP、ATR、关键位、市场环境与催化剂给出条件式情景和失效条件。用于“今天怎么走”“早盘能不能追”“今日支撑阻力”，不用于长期DCF或全市场选股。
-version: 1.0.0
+version: 1.0.1
 license: internal
 allowed-tools:
   - knowledge_search
