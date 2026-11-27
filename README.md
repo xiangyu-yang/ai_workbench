@@ -139,6 +139,7 @@ src/
 drizzle/                  # SQL 迁移
 deploy/                   # 生产 Compose 与 K8s
 docs/                     # 架构、运维、API
+services/quant/            # 可选 Python 量化/指标/回测服务
 scripts/                  # 迁移、种子、示例 MCP、协议测试
 tests/                    # 单元测试
 ```
@@ -159,6 +160,16 @@ APP_SECRET=$(openssl rand -hex 32) docker compose up -d --build
 APP_SECRET=$(openssl rand -hex 32) docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.s3.yml up -d --build
 ```
 包含一次性迁移 Job、Web 与独立 Worker，可水平扩展。S3 overlay 会额外启动 MinIO，并把交付物/聊天附件切换到 S3 兼容存储；K8s 参考清单见 `deploy/k8s.yaml`。使用外部 S3 时不要启动 MinIO，直接注入 `S3_*` 环境变量即可。
+
+量化/指标/回测可单独启动可选的 Python 服务：
+
+```bash
+cd services/quant
+pip install -r requirements-dev.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8100
+```
+
+或使用 `deploy/docker-compose.quant.yml` 叠加到生产 compose。
 
 ### 构建产物
 ```bash

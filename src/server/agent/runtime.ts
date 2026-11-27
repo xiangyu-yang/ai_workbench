@@ -2,12 +2,10 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
 import {
   approvals,
-  expertKnowledgeBases,
   experts,
   messages,
   threads,
   type Approval,
-  type Expert,
   type MessagePart,
   type MessageStatus,
   type SkillPart,
@@ -22,42 +20,17 @@ import { costOf, resolveModel, streamChat } from '@/server/llm/gateway';
 import { isOllamaProvider, ollamaNumCtx } from '@/server/llm/ollama';
 import { buildKnowledgeBlock, searchKnowledge } from '@/server/rag/retrieve';
 import { createRun, finishRun, recordUsage } from '@/server/usage';
-import type { LlmMessage, LlmToolCall, ProviderConfig, ResolvedModel } from '@/server/llm/types';
-import type { ModelInfo } from '@/server/db/schema';
+import type { LlmMessage, LlmToolCall, ResolvedModel } from '@/server/llm/types';
 import type { Emit, RuntimeEvent } from './events';
 import { buildHistory, lastUserText, textOfParts } from './history';
 import { buildSystemPrompt } from './prompt';
 import { buildToolset, type AgentMode } from './tools';
 import type { RuntimeTool, ToolContext, ToolResult } from './tools/types';
 import { validateArgs, truncate } from './validate';
-
-function dedupeTextParts(parts: MessagePart[]): void {
-  const seen = new Set<string>();
-  for (let i = 0; i < parts.length; i += 1) {
-    const part = parts[i];
-    if (part.type !== 'text') continue;
-    const paragraphs = part.text.split(/\n{2,}/);
-    if (paragraphs.length > 1) {
-      const seenParagraphs = new Set<string>();
-      const unique = paragraphs.filter((paragraph) => {
-        const key = paragraph.replace(/\s+/g, '').trim();
-        if (key.length < 60) return true;
-        if (seenParagraphs.has(key)) return false;
-        seenParagraphs.add(key);
-        return true;
-      });
-      part.text = unique.join('\n\n');
-    }
-    const normalized = part.text.replace(/\s+/g, '').trim();
-    if (normalized.length < 80) continue;
-    if (seen.has(normalized)) {
-      parts.splice(i, 1);
-      i -= 1;
-    } else {
-      seen.add(normalized);
-    }
-  }
-}
+import { dedupeTextParts, needsApproval, riskOf, toAssistantMessage, toolTitle } from './loop/helpers';
+import { kbIdsOf, loadExpert } from './loop/experts';
+import { applyResultExtras } from './loop/extras';
+import { delegateToExpert } from './loop/delegate';
 
 export type RunParams = {
   orgId: string;
@@ -80,73 +53,6 @@ export type RunOutcome = {
   outputTokens: number;
   error?: string;
 };
-
-const POLICY_LABEL: Record<string, string> = {
-  never: '自动执行',
-  dangerous: '危险操作需审批',
-  always: '逐动作审批',
-};
-
-function riskOf(tool: RuntimeTool): string {
-  if (tool.name === 'workspace_write') return '将写入工作区并生成可下载的交付物文件';
-  if (tool.name === 'http_request') return '将向外部系统发起 HTTP 请求，可能改变第三方数据';
-  if (tool.name.startsWith('mcp_')) return '将调用外部连接器，可能读取或修改第三方系统数据';
-  if (tool.name === 'run_skill_script') return '将在隔离目录执行技能脚本，可能产生计算或文件副作用';
-  if (tool.name.startsWith('skill_')) return '将调用技能配置的外部接口';
-  return '该操作会产生外部副作用';
-}
-
-function needsApproval(tool: RuntimeTool, policy: string): boolean {
-  if (tool.alwaysApprove) return true;
-  if (policy === 'never') return false;
-  if (policy === 'always') return !tool.readonly;
-  return Boolean(tool.dangerous);
-}
-
-function toolTitle(name: string): string {
-  return name
-    .replace(/^mcp_\d+_/, '')
-    .replace(/^skill_\d+_\d+_/, '')
-    .replace(/_/g, ' ');
-}
-
-async function loadExpert(orgId: string, expertId?: string | null): Promise<Expert | null> {
-  if (!expertId) return null;
-  const db = await getDb();
-  const rows = await db
-    .select()
-    .from(experts)
-    .where(and(eq(experts.orgId, orgId), eq(experts.id, expertId)))
-    .limit(1);
-  return rows[0] || null;
-}
-
-async function kbIdsOf(orgId: string, expert: Expert | null): Promise<string[]> {
-  if (!expert) return [];
-  const db = await getDb();
-  const rows = await db
-    .select({ id: expertKnowledgeBases.knowledgeBaseId })
-    .from(expertKnowledgeBases)
-    .where(and(eq(expertKnowledgeBases.orgId, orgId), eq(expertKnowledgeBases.expertId, expert.id)));
-  return rows.map((r) => r.id);
-}
-
-function toAssistantMessage(parts: MessagePart[]): LlmMessage | null {
-  const text = textOfParts(parts);
-  const toolParts = parts.filter(
-    (p): p is ToolPart => p.type === 'tool',
-  );
-  if (!text && !toolParts.length) return null;
-  return {
-    role: 'assistant',
-    content: text,
-    toolCalls: toolParts.map((p) => ({
-      id: p.id,
-      name: p.name,
-      args: (p.args || {}) as Record<string, unknown>,
-    })),
-  };
-}
 
 export async function runAgent(params: RunParams): Promise<RunOutcome> {
   const db = await getDb();
@@ -1359,115 +1265,4 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   }
   void finished;
   return finalize('completed');
-}
-
-async function applyResultExtras(
-  result: ToolResult,
-  parts: MessagePart[],
-  send: (event: RuntimeEvent) => void,
-  callId: string,
-): Promise<void> {
-  if (result.citations?.length) {
-    const startIndex = parts.filter((p) => p.type === 'citation').length;
-    for (const [i, citation] of result.citations.entries()) {
-      const item = { ...citation, index: startIndex + i + 1 };
-      parts.push(item);
-      send({ type: 'citation', citation: item });
-    }
-  }
-  if (result.artifacts?.length) {
-    for (const artifact of result.artifacts) {
-      const part: MessagePart = {
-        type: 'artifact',
-        artifactId: artifact.id,
-        name: artifact.name,
-        mime: artifact.mime,
-        size: artifact.size,
-        kind: artifact.kind as 'document' | 'data' | 'code' | 'image' | 'other',
-      };
-      parts.push(part);
-      send({ type: 'artifact', artifact });
-    }
-  }
-  void callId;
-}
-
-async function delegateToExpert(
-  params: RunParams,
-  expertId: string,
-  goal: string,
-): Promise<string> {
-  const db = await getDb();
-  const expert = await loadExpert(params.orgId, expertId);
-  if (!expert) return '目标专家不存在';
-  const resolved = await resolveModel(params.orgId, expert.providerId, expert.modelId);
-  const kbIds = await kbIdsOf(params.orgId, expert);
-  const toolset = await buildToolset({
-    orgId: params.orgId,
-    expert,
-    mode: 'ask',
-    kbIds,
-    depth: (params.depth || 0) + 1,
-    query: goal,
-  });
-  const system = buildSystemPrompt({
-    orgName: '组织',
-    expert,
-    mode: 'ask',
-    skillInstructions: toolset.instructions,
-    knowledge: '',
-    depth: (params.depth || 0) + 1,
-  });
-  const messages: LlmMessage[] = [
-    { role: 'system', content: system },
-    { role: 'user', content: `子任务：${goal}\n\n请直接给出可供主专家使用的高质量结论。` },
-  ];
-  const toolMap = new Map(toolset.tools.map((t) => [t.name, t]));
-  let text = '';
-  for (let step = 0; step < 3; step++) {
-    const result = await streamChat({
-      provider: resolved.provider,
-      model: resolved.modelId,
-      messages,
-      tools: toolset.tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      })),
-      temperature: 0.3,
-      signal: params.signal,
-    });
-    text += result.text;
-    if (!result.toolCalls.length) break;
-    messages.push({ role: 'assistant', content: result.text, toolCalls: result.toolCalls });
-    for (const call of result.toolCalls) {
-      const tool = toolMap.get(call.name);
-      let content = '工具不可用';
-      if (tool) {
-        const validated = validateArgs(tool.parameters, call.args);
-        if (validated.ok) {
-          try {
-            const res = await tool.execute(validated.value, {
-              orgId: params.orgId,
-              userId: params.userId,
-              expertId: expert.id,
-              threadId: params.threadId,
-              taskId: params.taskId,
-              messageId: params.messageId,
-              scopeId: params.threadId,
-              mode: 'ask',
-              signal: params.signal,
-              emit: () => undefined,
-              kbIds,
-            });
-            content = res.content;
-          } catch (err) {
-            content = `执行失败：${(err as Error).message}`;
-          }
-        }
-      }
-      messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content });
-    }
-  }
-  return text || '子专家未返回结论';
 }

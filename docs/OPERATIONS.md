@@ -164,6 +164,19 @@ npm run db:seed-skills -- --force      # 覆盖同名技能包并生成新版本
 - 脚本在 `DATA_DIR/skill-runs/{org}/{skill}/{version}` 的隔离目录运行，仅支持 Node/Python/Bash，30 秒超时、1MB 输出上限，环境变量最小化。
 - 生产建议保持 `false`，或把 Web/Worker 放入具备内核隔离、网络策略与只读根文件系统的容器后再开启。脚本可访问网络与文件系统，不等同于强沙箱。
 
+## 可选 Python 量化服务
+
+`services/quant` 是独立 FastAPI 服务，只承接指标与回测，不保存业务数据、不参与对话运行时。生产建议只放在内网，由网关或内部服务调用。
+
+```bash
+cd services/quant
+pip install -r requirements-dev.txt
+pytest -q
+uvicorn app.main:app --host 0.0.0.0 --port 8100
+```
+
+接口：`GET /health`、`POST /v1/indicators`、`POST /v1/backtest/sma`。回测是 SMA 基线，不构成收益承诺。
+
 ## 9. 安全基线
 
 - 强制 TLS；入口限制管理端访问来源；WAF 可选。

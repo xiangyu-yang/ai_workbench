@@ -178,7 +178,7 @@ while (step < maxSteps) {
 }
 ```
 
-- `maxSteps` 专家级可配，硬上限 24。
+- `maxSteps` 专家级可配，硬上限 24；Runtime 的纯策略、专家加载、委派与工具附加物已拆到 `src/server/agent/loop/`，后续继续拆主循环。
 - 工具完整输出保存在消息 `parts`（默认最多 100k 字符）；模型只接收按工具类型裁剪的摘要（行情 8k、参考文件 2.5k、检索结果 3k 等），需要精确内容时通过 `evidence_search/evidence_read` 分页读取。
 - 失败工具返回结构化错误给模型自愈，而不是中断整轮。
 - 子代理委派：`delegate_to_expert` 以独立上下文运行（深度 ≤ 2），结果摘要回注。
@@ -353,7 +353,7 @@ Prometheus + Grafana + Loki
 **推荐演进**：
 
 1. 保持 TS 作为控制面与前端；
-2. 把量化/回测/ML 独立成 Python FastAPI 服务，通过内部 HTTP 或队列调用；
+2. 量化/回测/ML 已提供独立 Python FastAPI 骨架（`services/quant`），通过内部 HTTP 或队列调用；
 3. 当任务并发、嵌入吞吐或多地域成为真实瓶颈时，再按边界拆分 Worker/Gateway；
 4. 技能源文件化、领域模块化、可观测性优先于语言重写。
 
@@ -373,6 +373,7 @@ Prometheus + Grafana + Loki
 - [x] 任务中心：异步执行、计划步骤、事件流、取消/重试、审批、cron 定时、交付物
 - [x] 治理：模型供应商与密钥、用量成本、月度配额、审计日志、API Key、健康/指标
 - [x] 公开 API（v1）：专家运行、知识检索、任务创建
+- [x] 可选 Python 量化服务：SMA/RSI/ATR/波动/回撤与 SMA 基线回测
 - [x] 部署：Dockerfile、Compose、K8s 清单、迁移与种子、运维手册
 
 **后续路线（Roadmap）**
