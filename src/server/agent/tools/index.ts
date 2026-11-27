@@ -13,7 +13,7 @@ import {
 } from '@/server/db/schema';
 import { env } from '@/server/env';
 import { callMcpTool, getConnectorTools } from '@/server/mcp/manager';
-import { calculatorTool, readUrlTool, webSearchTool } from './builtin';
+import { calculatorTool, readUrlTool, webSearchConfigured, webSearchTool } from './builtin';
 import { memoryTools } from './memory';
 import { knowledgeSearchTool } from './knowledge';
 import { createTaskTool, completeTaskTool, updatePlanTool, updateStepTool } from './task';
@@ -158,7 +158,7 @@ export async function buildToolset(params: {
 
   const readonlyTools: RuntimeTool[] = [readUrlTool, calculatorTool, ...memoryTools];
   if (kbIds.length) readonlyTools.unshift(knowledgeSearchTool);
-  if (env.TAVILY_API_KEY) readonlyTools.push(webSearchTool);
+  if (webSearchConfigured()) readonlyTools.push(webSearchTool);
 
   if (mode === 'ask') {
     if (expert) {

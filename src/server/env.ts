@@ -54,6 +54,8 @@ export const env = {
   TASK_CONCURRENCY: Math.max(1, Number(process.env.TASK_CONCURRENCY || 2)),
   MIGRATE_ON_BOOT: bool(process.env.MIGRATE_ON_BOOT, true),
   TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
+  SEARXNG_URL: (process.env.SEARXNG_URL || '').replace(/\/+$/, ''),
+  WEB_SEARCH_FALLBACK: bool(process.env.WEB_SEARCH_FALLBACK, true),
   TOOL_ALLOWED_HOSTS: (process.env.TOOL_ALLOWED_HOSTS || '')
     .split(',')
     .map((s) => s.trim())

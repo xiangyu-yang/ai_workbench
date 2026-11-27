@@ -1,0 +1,34 @@
+# 可选无 Key 联网搜索：自建 SearXNG。
+# 用法：
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.search.yml up -d --build
+#
+# 需把 settings.yml 的 secret_key 换掉；SearXNG 只暴露给内网 Web/Worker。
+services:
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  web:
+    environment:
+      SEARXNG_URL: http://searxng:8080
+      WEB_SEARCH_FALLBACK: "false"
+    depends_on:
+      searxng:
+        condition: service_healthy
+
+  worker:
+    environment:
+      SEARXNG_URL: http://searxng:8080
+      WEB_SEARCH_FALLBACK: "false"
+    depends_on:
+      searxng:
+        condition: service_healthy

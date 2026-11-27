@@ -15,7 +15,6 @@ import {
 } from '@/server/db/schema';
 import { audit } from '@/server/audit';
 import { createArtifact } from '@/server/artifacts';
-import { newId } from '@/server/ids';
 import { costOf, resolveModel, streamChat } from '@/server/llm/gateway';
 import { isOllamaProvider, ollamaNumCtx } from '@/server/llm/ollama';
 import { buildKnowledgeBlock, searchKnowledge } from '@/server/rag/retrieve';
@@ -32,6 +31,8 @@ import { kbIdsOf, loadExpert } from './loop/experts';
 import { applyResultExtras } from './loop/extras';
 import { delegateToExpert } from './loop/delegate';
 import { buildStockArtifact, emptyReplyText, reportSynthesisPrompt } from './loop/report';
+import { createApprovalRequest } from './loop/approval';
+import { applyToolResult } from './loop/tool-runner';
 
 export type RunParams = {
   orgId: string;
@@ -193,7 +194,6 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   let loopGuard = false;
   const stockResearch = toolset.skills.some((skill) => skill.name.includes('股票深度分析'));
   const blockedStockTools = new Set(['read_url', 'fetch_url', 'http_request']);
-  if (!process.env.TAVILY_API_KEY) blockedStockTools.add('web_search');
 
   let llmMessages: LlmMessage[] = [];
   let systemPrompt = '';
@@ -322,7 +322,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       if (call.name === 'web_search') {
         return {
           content:
-            '当前部署未配置联网搜索（TAVILY_API_KEY），不要继续调用 web_search；请基于已有结构化数据和证据完成回答，并明确标注新闻/催化剂未获取。',
+            '当前部署未启用联网搜索。可配置 SEARXNG_URL、TAVILY_API_KEY，或开启 WEB_SEARCH_FALLBACK；不要继续调用 web_search，请基于已有数据和证据完成回答，并标注新闻/催化剂未获取。',
           summary: '联网搜索未配置',
         };
       }
@@ -518,10 +518,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
       };
       const started = Date.now();
       const result = await executeTool(call, tool);
-      part.status = result.isError ? 'error' : 'ok';
-      part.output = result.content;
-      part.summary = result.summary || (result.isError ? '执行失败' : '已完成');
-      part.durationMs = Date.now() - started;
+      applyToolResult(part, result, Date.now() - started);
       llmMessages.push({
         role: 'tool',
         toolCallId: part.id,
@@ -533,7 +530,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
         type: 'tool_result',
         id: part.id,
         name: part.name,
-        status: part.status === 'ok' ? 'ok' : 'error',
+        status: result.isError ? 'error' : 'ok',
         summary: part.summary,
         output: truncate(result.content, 4000),
         durationMs: part.durationMs,
@@ -808,9 +805,8 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
               part.status = 'pending_approval';
               continue;
             }
-            const approvalId = newId('apr');
-            await db.insert(approvals).values({
-              id: approvalId,
+            const risk = riskOf(tool || { name: call.name } as RuntimeTool);
+            const approval = await createApprovalRequest({
               orgId: params.orgId,
               threadId: params.threadId,
               messageId: assistant.id,
@@ -819,19 +815,17 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
               toolCallId: call.id,
               toolName: call.name,
               toolArgs: (call.args || {}) as Record<string, unknown>,
-              risk: riskOf(tool || { name: call.name } as RuntimeTool),
-              status: 'pending',
-              expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+              risk,
             });
             part.status = 'pending_approval';
-            part.approvalId = approvalId;
+            part.approvalId = approval.id;
             send({
               type: 'approval',
               approval: {
-                id: approvalId,
+                id: approval.id,
                 toolName: call.name,
                 toolArgs: (call.args || {}) as Record<string, unknown>,
-                risk: riskOf(tool || { name: call.name } as RuntimeTool),
+                risk: approval.risk,
                 messageId: assistant.id,
                 taskId: params.taskId || undefined,
               },
@@ -842,7 +836,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
               name: call.name,
               status: 'pending_approval',
               summary: '等待人工审批',
-              approvalId,
+              approvalId: approval.id,
             });
           }
           await persist('awaiting_approval');
@@ -1012,10 +1006,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           } else {
             consecutiveToolErrors = 0;
           }
-          part.status = toolResult.isError ? 'error' : 'ok';
-          part.output = toolResult.content;
-          part.summary = toolResult.summary || (toolResult.isError ? '执行失败' : '已完成');
-          part.durationMs = Date.now() - started;
+          applyToolResult(part, toolResult, Date.now() - started);
           llmMessages.push({
             role: 'tool',
             toolCallId: call.id,
@@ -1027,7 +1018,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
             type: 'tool_result',
             id: call.id,
             name: call.name,
-            status: part.status === 'ok' ? 'ok' : 'error',
+            status: toolResult.isError ? 'error' : 'ok',
             summary: part.summary,
             output: truncate(toolResult.content, 4000),
             durationMs: part.durationMs,

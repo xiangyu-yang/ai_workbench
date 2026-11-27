@@ -7,9 +7,11 @@ import {
   toolTitle,
 } from '@/server/agent/loop/helpers';
 import type { RuntimeTool } from '@/server/agent/tools/types';
-import type { MessagePart } from '@/server/db/schema';
+import type { MessagePart, ToolPart } from '@/server/db/schema';
 import { buildSkillPackageTools, normalizeScriptArgs } from '@/server/agent/tools/skill-package';
+import { parseDuckDuckGoResults } from '@/server/agent/tools/builtin';
 import { buildStockArtifact, emptyReplyText } from '@/server/agent/loop/report';
+import { applyToolResult } from '@/server/agent/loop/tool-runner';
 
 const tool = (name: string, extra: Partial<RuntimeTool> = {}): RuntimeTool => ({
   name,
@@ -103,6 +105,18 @@ describe('agent loop helpers', () => {
     expect(result?.content).toContain('intraday-playbook');
   });
 
+  it('parses DuckDuckGo HTML results and unwraps redirects', () => {
+    const html = `
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fnews">智谱 &amp; 新闻</a>
+      <a class="result__snippet">摘要 &lt;一&gt;</a>
+    `;
+    const results = parseDuckDuckGoResults(html, 3);
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe('智谱 & 新闻');
+    expect(results[0].url).toBe('https://example.com/news');
+    expect(results[0].content).toContain('摘要');
+  });
+
   it('builds an assistant message with tool calls', () => {
     const message = toAssistantMessage([
       { type: 'text', text: '调用工具' },
@@ -153,6 +167,21 @@ describe('report helpers', () => {
     });
     expect(result.heading).toBe('深度研究');
     expect(result.content.startsWith('前言')).toBe(false);
+  });
+
+  it('applies tool results consistently', () => {
+    const part = {
+      type: 'tool' as const,
+      id: 'call',
+      name: 'lookup',
+      title: 'lookup',
+      status: 'running' as const,
+    } as ToolPart;
+    applyToolResult(part, { content: 'ok', summary: '完成' }, 12);
+    expect(part.status).toBe('ok');
+    expect(part.output).toBe('ok');
+    expect(part.summary).toBe('完成');
+    expect(part.durationMs).toBe(12);
   });
 
   it('builds stable empty-reply diagnostics', () => {

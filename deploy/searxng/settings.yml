@@ -1,0 +1,14 @@
+use_default_settings: true
+
+server:
+  secret_key: "change-me-in-production"
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  autocomplete: ""
+  default_lang: "zh-CN"
+  formats:
+    - html
+    - json

@@ -138,6 +138,7 @@ orgs ─┬─ memberships ── users ── sessions
 
 - **消息用 parts 而非纯文本**：`parts: [{type:'text'|'reasoning'|'tool'|'artifact'|'citation'}]`，天然支持工具卡片、思考过程、交付物与引用回放。
 - **对象存储抽象**：`storage.ts` 统一 `putObject/getObject`；`S3_BUCKET` 存在时交付物与聊天附件走 S3/MinIO，否则回退 `DATA_DIR`；数据库只保存对象引用，不保存二进制。
+- **搜索后端**：`web_search` 支持 Tavily、自建 SearXNG、DuckDuckGo 公共页面回退；后两者不要求 API Key，但 DuckDuckGo 受网络与限流影响。
 - **工具容错**：技能文件路径会做常见别名/唯一 basename 匹配；脚本参数会把裸代码规范成 `--symbol` 并忽略不支持的 `--market`；非 A 股 F10 返回“基本面未获取”而不是异常；未配置的 `web_search` 返回可读提示。
 - **Run 与 Message 分离**：一次用户消息可能触发多次模型调用与审批恢复；Run 记录每次执行的成本、延迟与错误。
 - **会话运行态**：线程列表返回 `busyStatus`（streaming/awaiting_approval），侧栏与管理弹窗用青色/琥珀色标记；管理弹窗可强制结束当前运行，随后允许删除。

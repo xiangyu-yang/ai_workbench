@@ -146,6 +146,27 @@ tests/                    # 单元测试
 
 ---
 
+## 无 Key 联网搜索
+
+没有稳定、免费、无需注册的通用搜索 API。当前支持三种方式：
+
+```text
+Tavily（可选，有免费额度，需要 Key）
+SearXNG（推荐；自建，无需 Key）
+DuckDuckGo 公共页面（无需 Key，best effort，可能被限流/网络限制）
+```
+
+推荐生产使用自建 SearXNG：
+
+```bash
+docker compose \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.search.yml \
+  up -d --build
+```
+
+启动后 Web/Worker 使用 `SEARXNG_URL=http://searxng:8080`，并关闭 DuckDuckGo 回退。搜索页端口 `8080` 仅用于内网访问；对公网暴露前请加认证/网关。
+
 ## 部署
 
 ### 单机 / 私有化
@@ -174,6 +195,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8100
 ### 构建产物
 ```bash
 npm run build
+npm run production:check   # 生产环境变量/拓扑预检
 node .next/standalone/server.js   # 需先复制 .next/static、drizzle 与 skills
 ```
 
@@ -203,6 +225,8 @@ node .next/standalone/server.js   # 需先复制 .next/static、drizzle 与 skil
 | `S3_ACCESS_KEY_ID` | 空 | S3 access key；生产建议由 Secrets Manager 注入 |
 | `S3_SECRET_ACCESS_KEY` | 空 | S3 secret key；生产建议由 Secrets Manager 注入 |
 | `S3_FORCE_PATH_STYLE` | `true` | MinIO 需要 path-style；AWS S3 可设为 false |
+| `SEARXNG_URL` | 空 | 自建 SearXNG 地址，例如 `http://searxng:8080`；无需 API Key |
+| `WEB_SEARCH_FALLBACK` | `true` | 无 Tavily/SearXNG 时是否允许 DuckDuckGo 公共页面回退 |
 | `SKILLS_DIR` | `./skills` | 内置技能源目录；standalone/Docker 已显式复制 |
 | `TOOL_ALLOWED_HOSTS` | 空 | 工具出口域名白名单（允许内网时显式列出） |
 

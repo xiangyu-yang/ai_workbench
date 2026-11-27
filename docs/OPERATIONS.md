@@ -19,6 +19,7 @@
 4. 决定 `MCP_ALLOW_STDIO`：托管集群建议 `false`，仅允许 HTTP/SSE 连接器。
 5. 配置 `TAVILY_API_KEY`（如需联网搜索）与 `TOOL_ALLOWED_HOSTS`（如需访问内网系统）。
 6. 运行迁移 Job，再启动 Web/Worker；确认 `/api/health` 返回 `status: ok`；确认镜像包含 `skills/` 源目录（或用 `SKILLS_DIR` 指向共享只读目录）。
+7. 运行 `npm run production:check` 做环境预检；它不连接外部服务，只检查关键开关。
 7. 配置对象存储：多副本生产设置 `S3_BUCKET`/`S3_ENDPOINT`/密钥，或使用 `deploy/docker-compose.s3.yml` 启动 MinIO；Agent workspace 仍需共享卷。
 8. 首次登录后立即修改演示账号密码（或重新创建组织）。
 9. 配置日志采集与 Prometheus 抓取 `/api/metrics`（建议加 `METRICS_TOKEN`）。
@@ -179,6 +180,38 @@ uvicorn app.main:app --host 0.0.0.0 --port 8100
 ```
 
 接口：`GET /health`、`POST /v1/indicators`、`POST /v1/backtest/sma`。回测是 SMA 基线，不构成收益承诺。
+
+## 无 Key 联网搜索
+
+没有稳定的、免费的、无需注册的通用 Web Search API。可用选项：
+
+1. **自建 SearXNG（推荐）**：无需 API Key，聚合多个搜索引擎；生产只开内网。
+2. **DuckDuckGo 公共 HTML 页面**：无需 Key，但可能被限流或网络限制，属于 best effort。
+3. **Tavily**：有免费额度，但必须配置 Key。
+
+启动 SearXNG：
+
+```bash
+docker compose \
+  -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.search.yml \
+  up -d --build
+```
+
+修改 `deploy/searxng/settings.yml` 的 `server.secret_key`。Web/Worker 通过 `SEARXNG_URL` 访问；如果 `SEARXNG_URL` 为空且允许回退，工具会尝试 DuckDuckGo 公共页面，失败时返回可读的“搜索未获取”而不是红色异常。
+
+## 生产预检
+
+```bash
+APP_SECRET=$(openssl rand -hex 32) \
+DATABASE_URL='postgres://...' \
+NODE_ENV=production \
+INPROCESS_WORKER=false \
+MIGRATE_ON_BOOT=false \
+npm run production:check
+```
+
+该命令只校验环境变量与拓扑开关，不验证 PostgreSQL、S3/MinIO、SearXNG 连通性；连通性需用 compose/K8s 集成测试或健康检查确认。
 
 ## 9. 安全基线
 
