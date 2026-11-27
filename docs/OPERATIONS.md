@@ -192,13 +192,19 @@ uvicorn app.main:app --host 0.0.0.0 --port 8100
 启动 SearXNG：
 
 ```bash
+SEARXNG_SECRET=$(openssl rand -hex 32) \
 docker compose \
   -f deploy/docker-compose.prod.yml \
   -f deploy/docker-compose.search.yml \
   up -d --build
 ```
 
-修改 `deploy/searxng/settings.yml` 的 `server.secret_key`。Web/Worker 通过 `SEARXNG_URL` 访问；如果 `SEARXNG_URL` 为空且允许回退，工具会尝试 DuckDuckGo 公共页面，失败时返回可读的“搜索未获取”而不是红色异常。
+密钥由 `SEARXNG_SECRET` 注入，不要写进 `settings.yml`。默认启用百度、必应、搜狗引擎；Web/Worker 通过 `SEARXNG_URL` 访问。若 `SEARXNG_URL` 为空且允许回退，工具会尝试 DuckDuckGo 公共页面，失败时返回可读的“搜索未获取”而不是红色异常。
+
+- 连通性探针：`GET /api/health/search`
+- 结果缓存：`WEB_SEARCH_CACHE_TTL_MS`，默认 300000ms
+- SearXNG 端口默认只绑定 `127.0.0.1:8080`，不要直接暴露公网
+- SearXNG 的 JSON API 需要 `search.formats` 包含 `json`
 
 ## 生产预检
 

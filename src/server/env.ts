@@ -56,6 +56,7 @@ export const env = {
   TAVILY_API_KEY: process.env.TAVILY_API_KEY || '',
   SEARXNG_URL: (process.env.SEARXNG_URL || '').replace(/\/+$/, ''),
   WEB_SEARCH_FALLBACK: bool(process.env.WEB_SEARCH_FALLBACK, true),
+  WEB_SEARCH_CACHE_TTL_MS: Math.max(0, Number(process.env.WEB_SEARCH_CACHE_TTL_MS || 300_000)),
   TOOL_ALLOWED_HOSTS: (process.env.TOOL_ALLOWED_HOSTS || '')
     .split(',')
     .map((s) => s.trim())

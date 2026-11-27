@@ -159,13 +159,14 @@ DuckDuckGo 公共页面（无需 Key，best effort，可能被限流/网络限�
 推荐生产使用自建 SearXNG：
 
 ```bash
+SEARXNG_SECRET=$(openssl rand -hex 32) \
 docker compose \
   -f deploy/docker-compose.prod.yml \
   -f deploy/docker-compose.search.yml \
   up -d --build
 ```
 
-启动后 Web/Worker 使用 `SEARXNG_URL=http://searxng:8080`，并关闭 DuckDuckGo 回退。搜索页端口 `8080` 仅用于内网访问；对公网暴露前请加认证/网关。
+SearXNG 默认启用百度、必应、搜狗引擎；Web/Worker 使用 `SEARXNG_URL=http://searxng:8080`，并关闭 DuckDuckGo 回退。搜索页端口默认只绑定 `127.0.0.1:8080`；健康检查见 `GET /api/health/search`。结果在进程内缓存 5 分钟（`WEB_SEARCH_CACHE_TTL_MS`）。
 
 ## 部署
 
@@ -226,6 +227,8 @@ node .next/standalone/server.js   # 需先复制 .next/static、drizzle 与 skil
 | `S3_SECRET_ACCESS_KEY` | 空 | S3 secret key；生产建议由 Secrets Manager 注入 |
 | `S3_FORCE_PATH_STYLE` | `true` | MinIO 需要 path-style；AWS S3 可设为 false |
 | `SEARXNG_URL` | 空 | 自建 SearXNG 地址，例如 `http://searxng:8080`；无需 API Key |
+| `SEARXNG_SECRET` | 空 | SearXNG 实例密钥；由 compose 注入，不要提交 |
+| `WEB_SEARCH_CACHE_TTL_MS` | `300000` | 搜索结果进程内缓存 TTL |
 | `WEB_SEARCH_FALLBACK` | `true` | 无 Tavily/SearXNG 时是否允许 DuckDuckGo 公共页面回退 |
 | `SKILLS_DIR` | `./skills` | 内置技能源目录；standalone/Docker 已显式复制 |
 | `TOOL_ALLOWED_HOSTS` | 空 | 工具出口域名白名单（允许内网时显式列出） |

@@ -1,14 +1,22 @@
-# 可选无 Key 联网搜索：自建 SearXNG。
-# 用法：
-#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.search.yml up -d --build
+# 生产无 Key 联网搜索：自建 SearXNG，聚合百度/必应/搜狗等引擎。
 #
-# 需把 settings.yml 的 secret_key 换掉；SearXNG 只暴露给内网 Web/Worker。
+# 用法：
+#   SEARXNG_SECRET=$(openssl rand -hex 32) \
+#   docker compose \
+#     -f deploy/docker-compose.prod.yml \
+#     -f deploy/docker-compose.search.yml \
+#     up -d --build
+#
+# Web/Worker 只通过内网访问 SearXNG；8080 默认只绑定 127.0.0.1。
 services:
   searxng:
     image: searxng/searxng:latest
     restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?SEARXNG_SECRET is required}
+      SEARXNG_BASE_URL: http://localhost:8080/
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./searxng:/etc/searxng:ro
     healthcheck:

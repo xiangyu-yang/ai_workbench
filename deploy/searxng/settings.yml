@@ -1,9 +1,11 @@
 use_default_settings: true
 
 server:
-  secret_key: "change-me-in-production"
+  # 由 compose 的 SEARXNG_SECRET 注入；不要提交真实密钥。
+  secret_key: ""
   limiter: false
   image_proxy: false
+  public_instance: false
 
 search:
   safe_search: 1
@@ -12,3 +14,12 @@ search:
   formats:
     - html
     - json
+
+# 显式启用中文常用引擎；SearXNG 负责抓取与聚合，Cuter 不直接抓这些站点。
+engines:
+  - name: baidu
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: sogou
+    disabled: false

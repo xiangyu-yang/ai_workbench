@@ -15,6 +15,43 @@ export function webSearchConfigured(): boolean {
   return Boolean(env.TAVILY_API_KEY || env.SEARXNG_URL || env.WEB_SEARCH_FALLBACK);
 }
 
+export function webSearchProvider(): 'tavily' | 'searxng' | 'duckduckgo' | 'none' {
+  if (env.TAVILY_API_KEY) return 'tavily';
+  if (env.SEARXNG_URL) return 'searxng';
+  if (env.WEB_SEARCH_FALLBACK) return 'duckduckgo';
+  return 'none';
+}
+
+type SearchCacheEntry = { expiresAt: number; results: WebSearchResult[]; provider: string };
+const searchCache = new Map<string, SearchCacheEntry>();
+
+export function clearWebSearchCache(): void {
+  searchCache.clear();
+}
+
+function readCache(key: string): SearchCacheEntry | null {
+  const hit = searchCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    searchCache.delete(key);
+    return null;
+  }
+  return hit;
+}
+
+function writeCache(key: string, provider: string, results: WebSearchResult[]): void {
+  if (env.WEB_SEARCH_CACHE_TTL_MS <= 0) return;
+  if (searchCache.size > 200) {
+    const oldest = searchCache.keys().next().value;
+    if (oldest) searchCache.delete(oldest);
+  }
+  searchCache.set(key, {
+    expiresAt: Date.now() + env.WEB_SEARCH_CACHE_TTL_MS,
+    results,
+    provider,
+  });
+}
+
 function decodeHtml(value: string): string {
   return value
     .replace(/&amp;/g, '&')
@@ -162,6 +199,14 @@ export const webSearchTool: RuntimeTool = {
     const query = String(args.query || '').trim();
     if (!query) return { content: '搜索关键词为空', isError: true };
     const limit = Math.min(Math.max(Number(args.max_results) || 5, 1), 8);
+    const cacheKey = `${webSearchProvider()}:${query.toLowerCase()}:${limit}`;
+    const cached = readCache(cacheKey);
+    if (cached) {
+      return {
+        content: searchBody(cached.results, cached.provider),
+        summary: `找到 ${cached.results.length} 条结果 · ${cached.provider}（缓存）`,
+      };
+    }
     const errors: string[] = [];
     const providers: Array<{ name: string; run: () => Promise<WebSearchResult[]> }> = [
       { name: 'tavily', run: () => tavilySearch(query, limit) },
@@ -172,6 +217,7 @@ export const webSearchTool: RuntimeTool = {
       try {
         const results = await provider.run();
         if (!results.length) continue;
+        writeCache(cacheKey, provider.name, results);
         return {
           content: searchBody(results, provider.name),
           summary: `找到 ${results.length} 条结果 · ${provider.name}`,
