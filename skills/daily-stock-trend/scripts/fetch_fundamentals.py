@@ -112,7 +112,18 @@ def main():
         quote = fetch_quote(resolved)
     except Exception as error:
         quote_error = str(error)
-    rows = fetch_f10(resolved, args.periods)
+    try:
+        rows = fetch_f10(resolved, args.periods)
+    except ValueError as error:
+        if resolved['market'] != 'cn':
+            print('# 基本面未获取')
+            print('')
+            print('- 标的：' + str(resolved.get('display') or ''))
+            print('- 原因：' + str(error))
+            print('- 处理：港股/美股不使用 A 股 F10 接口；请使用行情快照、PE/PB/市值与公开资料，并在报告中标注“结构化财务未获取”。')
+            print('- 不要用 fetch_fundamentals.py 反复重试非 A 股标的。')
+            return
+        raise
     history = [item_of(row) for row in rows]
     latest = history[0]
     warnings = []

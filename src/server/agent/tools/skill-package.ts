@@ -114,9 +114,49 @@ function findPackage(packages: SkillPackageRuntime[], key: string): SkillPackage
   );
 }
 
+const FILE_ALIASES: Record<string, string> = {
+  // 模型常把日内的量价手册记成这个名字；包内正式文件名是 intraday-playbook.md。
+  'references/volume-price-playbook.md': 'references/intraday-playbook.md',
+  'references/volume-price.md': 'references/intraday-playbook.md',
+  'references/technical-playbook.md': 'references/intraday-playbook.md',
+};
+
+function normalizeFileKey(filePath: string): string {
+  return filePath.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
 function getFile(pkg: SkillPackageRuntime, filePath: string): SkillPackageFile | null {
-  const normalized = filePath.replace(/\\/g, '/').replace(/^\.\//, '');
-  return pkg.files.find((file) => file.path === normalized) || null;
+  const normalized = normalizeFileKey(filePath);
+  const exact = pkg.files.find((file) => file.path === normalized);
+  if (exact) return exact;
+  const alias = FILE_ALIASES[normalized];
+  if (alias) return pkg.files.find((file) => file.path === alias) || null;
+  // 只按 basename 做唯一匹配，避免把任意同名文件误读。
+  const basename = normalized.split('/').pop();
+  if (!basename) return null;
+  const matches = pkg.files.filter((file) => file.path.split('/').pop() === basename);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/** 把模型常见的裸参数（如 02513.HK）规范成脚本要求的 --symbol。 */
+export function normalizeScriptArgs(scriptPath: string, rawArgs: string[]): string[] {
+  const args = [...rawArgs];
+  const isEquityScript = /(?:daily_trend_scan|live_market_scan|fetch_fundamentals|screen_stocks|risk_position)\.py$/.test(
+    scriptPath,
+  );
+  if (isEquityScript && args.length && !args[0].startsWith('-') && !args.includes('--symbol')) {
+    args.unshift('--symbol');
+  }
+  // 这些脚本没有 --market 参数；模型偶尔会自作主张传入，直接移除。
+  if (isEquityScript) {
+    for (let index = 0; index < args.length; index += 1) {
+      if (args[index] === '--market') {
+        args.splice(index, args[index + 1] && !args[index + 1].startsWith('-') ? 2 : 1);
+        index -= 1;
+      }
+    }
+  }
+  return args.slice(0, 10);
 }
 
 export function buildSkillPackageTools(
@@ -142,11 +182,13 @@ export function buildSkillPackageTools(
       async execute(args) {
         const pkg = findPackage(packages, String(args.skill || ''));
         if (!pkg) return { content: '未找到该技能包', isError: true };
-        const file = getFile(pkg, String(args.path || ''));
+        const requested = normalizeFileKey(String(args.path || ''));
+        const file = getFile(pkg, requested);
         if (!file) {
           return {
-            content: `未找到文件 ${String(args.path || '')}。可用文件：${pkg.files.map((item) => item.path).join(', ')}`,
-            isError: true,
+            // 路径是模型的猜测错误，不是基础设施故障；返回可用清单让模型自行纠正。
+            content: `未找到文件 ${requested}。可用文件：${pkg.files.map((item) => item.path).join(', ')}`,
+            summary: `未找到 ${requested}`,
           };
         }
         if (file.encoding === 'base64') {
@@ -156,8 +198,9 @@ export function buildSkillPackageTools(
           };
         }
         const content = file.content.slice(0, 30_000);
+        const aliasNote = requested !== file.path ? `（已自动匹配 ${requested} → ${file.path}）\n` : '';
         return {
-          content: `文件：${file.path}\n\n${content}${file.content.length > 30_000 ? '\n\n（内容已截断）' : ''}`,
+          content: `文件：${file.path}\n${aliasNote}\n${content}${file.content.length > 30_000 ? '\n\n（内容已截断）' : ''}`,
           summary: file.path,
         };
       },
@@ -226,6 +269,7 @@ export function buildSkillPackageTools(
         if (rawArgs.some((item) => item.length > 300 || item.includes('\0'))) {
           return { content: '脚本参数过长或包含非法字符', isError: true };
         }
+        const normalizedArgs = normalizeScriptArgs(scriptPath, rawArgs);
 
         const root = path.join(
           DATA_DIR,
@@ -246,7 +290,7 @@ export function buildSkillPackageTools(
           }
         }
         let inputFile = '';
-        const execArgs = [...rawArgs];
+        const execArgs = [...normalizedArgs];
         const inputPath = String(args.inputPath || '').trim();
         const inputText = typeof args.inputText === 'string' ? args.inputText : '';
         if (inputPath) {

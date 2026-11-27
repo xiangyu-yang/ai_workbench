@@ -31,6 +31,7 @@ import { dedupeTextParts, needsApproval, riskOf, toAssistantMessage, toolTitle }
 import { kbIdsOf, loadExpert } from './loop/experts';
 import { applyResultExtras } from './loop/extras';
 import { delegateToExpert } from './loop/delegate';
+import { buildStockArtifact, emptyReplyText, reportSynthesisPrompt } from './loop/report';
 
 export type RunParams = {
   orgId: string;
@@ -317,12 +318,21 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   };
 
   const executeTool = async (call: LlmToolCall, tool: RuntimeTool | undefined): Promise<ToolResult> => {
-    if (!tool) return { content: `未知工具：${call.name}`, isError: true };
+    if (!tool) {
+      if (call.name === 'web_search') {
+        return {
+          content:
+            '当前部署未配置联网搜索（TAVILY_API_KEY），不要继续调用 web_search；请基于已有结构化数据和证据完成回答，并明确标注新闻/催化剂未获取。',
+          summary: '联网搜索未配置',
+        };
+      }
+      return { content: `未知工具：${call.name}`, isError: true };
+    }
     if (stockResearch && blockedStockTools.has(call.name)) {
       return {
         content:
           '股票研究禁止抓取财经网页或调用外部 HTTP 接口。请使用 live_market_scan / fetch_fundamentals 的结构化结果；数据缺失时直接说明缺口。',
-        isError: true,
+        summary: '已按股票研究策略阻断外部抓取',
       };
     }
     if (call.parseError) return { content: `工具参数解析失败：${call.parseError}`, isError: true };
@@ -1154,9 +1164,7 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
           ...llmMessages,
           {
             role: 'user',
-            content: useDailyFinalizer
-              ? '你已完成数据获取。现在不要调用工具，直接输出中文“每日股价趋势”简报，1800-3000 字。必须以“# 标的名称 每日股价趋势”作为一级标题，然后包含：数据状态与阶段、今日结论、A/H/US资金流向（主力/散户/5/10日累计及口径）、枢轴/R1/R2/S1/S2、20日支撑阻力、ATR、高开/平开/低开三种情景及触发/观察/失效、盘中量能/VWAP验证、1-5日观察、催化剂/风险、数据缺口与一次免责声明。不要写长期 DCF、完整三张财务报表或深度估值模板；不要只写“开始撰写”，不要复述工具参数。'
-              : '你已完成数据获取。现在不要调用工具，直接输出最终的中文深度研究报告，4000-6000 字。必须包含：结论卡片、行情快照与量价诊断（含A/H/US资金流）、生意模式/行业格局、护城河/管理层、财务质量、估值（PE 锚定/反向 DCF/相对估值/敏感性）、下季度与 12 个月情景预测、催化剂/风险表、技术面执行参考、反方观点/数据缺口、来源与免责声明。不要只写“开始撰写”，不要复述工具参数。',
+            content: reportSynthesisPrompt(useDailyFinalizer),
           },
         ],
         temperature: expert?.temperature ?? 0.4,
@@ -1199,35 +1207,17 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
     finalStockText.length > 600
   ) {
     try {
-      const normalized = finalStockText.replace(/(^|[^\n])(#{1,3}\s+)/g, '$1\n\n$2').trim();
-      const requestText = lastUserText(llmMessages).trim();
-      const dailySubject = requestText
-        .split(/(今天|今日|当天|早盘|开盘|盘中|走势|分析|预测)/)[0]
-        .replace(/[，,。？?：:]/g, '')
-        .trim();
-      const firstHeadingIndex = normalized.search(/^#{1,3}[ \t]+/m);
-      const reportBody = firstHeadingIndex >= 0 ? normalized.slice(firstHeadingIndex) : normalized;
-      const dailyHeading = (dailySubject || '个股') + ' 每日股价趋势';
-      const headings = [...normalized.matchAll(/^#{1,3}[ \t]+(.+)$/gm)];
-      const reportHeading =
-        headings.find((match) => {
-          const text = match[1].trim();
-          return /(报告|分析|研究|预测|策略|趋势|简报)/.test(text) && !/^(第[一二三四五六七八九十\d]+步|候选)/.test(text);
-        }) || headings.find((match) => !/^(第[一二三四五六七八九十]+步|候选)/.test(match[1].trim()));
-      const artifactText = useDailyFinalizer
-        ? '# ' + dailyHeading + '\n\n' + reportBody
-        : (reportHeading?.index ? normalized.slice(reportHeading.index).trim() : normalized);
-      const heading = useDailyFinalizer
-        ? dailyHeading
-        : (reportHeading?.[1]?.trim().replace(/^#+\s*/, '') || '股票分析报告');
-      const safeName = heading.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
-      const name = safeName + '_' + new Date().toISOString().slice(0, 10) + '.md';
+      const generated = buildStockArtifact(finalStockText, {
+        userRequest: lastUserText(llmMessages).trim(),
+        daily: useDailyFinalizer,
+      });
+      const name = generated.name;
       const artifact = await createArtifact({
         orgId: params.orgId,
         scopeId: params.threadId,
         name,
         relativePath: name,
-        content: artifactText,
+        content: generated.content,
         mime: 'text/markdown',
         taskId: params.taskId,
         threadId: params.threadId,
@@ -1251,16 +1241,13 @@ export async function runAgent(params: RunParams): Promise<RunOutcome> {
   if (cancelled) return finalize('cancelled');
   if (errorMessage) return finalize('error', errorMessage);
   if (!textOfParts(parts).trim() && !parts.some((p) => p.type === 'artifact')) {
-    const hasReasoning = parts.some((p) => p.type === 'reasoning' && p.text.trim());
-    const hasTool = parts.some((p) => p.type === 'tool');
-    const budget = lastFinishReason === 'length' ? '（输出长度受限）' : '';
     parts.push({
       type: 'text',
-      text: hasReasoning
-        ? `（模型只返回了思考过程${budget}，未生成最终回答。请增大本地模型上下文/输出预算，或关闭深度思考后重试。）`
-        : hasTool
-          ? `（工具已执行，但模型没有生成最终说明${budget}。可以继续追问，或检查上方工具返回结果。）`
-          : `（模型未返回内容${budget}，请重试或检查模型配置。）`,
+      text: emptyReplyText({
+        hasReasoning: parts.some((p) => p.type === 'reasoning' && p.text.trim()),
+        hasTool: parts.some((p) => p.type === 'tool'),
+        lengthLimited: lastFinishReason === 'length',
+      }),
     });
   }
   void finished;
