@@ -19,8 +19,9 @@
 4. 决定 `MCP_ALLOW_STDIO`：托管集群建议 `false`，仅允许 HTTP/SSE 连接器。
 5. 配置 `TAVILY_API_KEY`（如需联网搜索）与 `TOOL_ALLOWED_HOSTS`（如需访问内网系统）。
 6. 运行迁移 Job，再启动 Web/Worker；确认 `/api/health` 返回 `status: ok`；确认镜像包含 `skills/` 源目录（或用 `SKILLS_DIR` 指向共享只读目录）。
-7. 首次登录后立即修改演示账号密码（或重新创建组织）。
-8. 配置日志采集与 Prometheus 抓取 `/api/metrics`（建议加 `METRICS_TOKEN`）。
+7. 配置对象存储：多副本生产设置 `S3_BUCKET`/`S3_ENDPOINT`/密钥，或使用 `deploy/docker-compose.s3.yml` 启动 MinIO；Agent workspace 仍需共享卷。
+8. 首次登录后立即修改演示账号密码（或重新创建组织）。
+9. 配置日志采集与 Prometheus 抓取 `/api/metrics`（建议加 `METRICS_TOKEN`）。
 
 ## 3. 数据库与迁移
 
@@ -70,8 +71,19 @@ docker run --rm -v cuter_data:/data -v "$PWD":/backup alpine \
 
 恢复时解压回卷并确保属主为 UID 1001。
 
-### 交付物
-`DATA_DIR/workspaces/` 为交付物，`DATA_DIR/uploads/` 为知识库原始文件与对话附件。多副本部署需共享存储（NFS/CephFS）或替换为 S3 适配器。
+### 交付物与对象存储
+默认 `DATA_DIR/workspaces/` 保存 Agent workspace，交付物与聊天附件落本地共享卷。设置 `S3_BUCKET` 后，交付物与聊天附件走 S3/MinIO；数据库只保存 `s3://` 引用。Agent workspace 仍需要共享卷（NFS/CephFS），除非后续接 workspace 对象存储服务。
+
+MinIO overlay：
+
+```bash
+APP_SECRET=$(openssl rand -hex 32) \
+docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.s3.yml up -d --build
+```
+
+使用外部 S3 时不要启动 MinIO，直接注入 `S3_BUCKET`、`S3_REGION`、`S3_ENDPOINT`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`、`S3_FORCE_PATH_STYLE`。
+
+S3 迁移：旧本地交付物仍可按原路径读取；新写入对象使用 `s3://` 引用。切换前先迁移历史对象，或保留本地卷作为回退。
 
 消息 `parts` 现在会保留完整工具结果（单次最多约 100k 字符）和报告文本，数据库与备份体积会相应增长；建议按组织保留策略归档旧会话，并监控 `messages`、`runs`、`artifacts` 的增长速度。
 

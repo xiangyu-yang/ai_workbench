@@ -1,9 +1,7 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
+import { getObject } from '@/server/storage';
 import { attachments, messages, type MessagePart } from '@/server/db/schema';
-import { DATA_DIR } from '@/server/env';
 import type { LlmMessage, UserContentPart } from '@/server/llm/types';
 
 const MAX_TOTAL_CHARS = 24_000;
@@ -34,9 +32,7 @@ async function loadAttachmentContent(
     .where(and(eq(attachments.orgId, orgId), inArray(attachments.id, attachmentIds)));
   for (const row of rows) {
     try {
-      const full = path.isAbsolute(row.path) ? row.path : path.join(DATA_DIR, row.path);
-      if (!full.startsWith(DATA_DIR)) continue;
-      const buffer = await fs.readFile(full);
+      const buffer = await getObject(row.path);
       if (row.kind === 'image') {
         out.set(row.id, `data:${row.mime};base64,${buffer.toString('base64')}`);
       } else if (buffer.byteLength < 200_000) {

@@ -59,6 +59,13 @@ export const env = {
     .map((s) => s.trim())
     .filter(Boolean),
   DATABASE_URL: process.env.DATABASE_URL || '',
+  // 对象存储：设置 S3_BUCKET 即启用 S3/MinIO；否则使用 DATA_DIR 本地卷。
+  S3_BUCKET: process.env.S3_BUCKET || '',
+  S3_REGION: process.env.S3_REGION || 'us-east-1',
+  S3_ENDPOINT: process.env.S3_ENDPOINT || '',
+  S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID || '',
+  S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY || '',
+  S3_FORCE_PATH_STYLE: bool(process.env.S3_FORCE_PATH_STYLE, true),
 };
 
 export const VERSION = '1.0.0';

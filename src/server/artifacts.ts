@@ -1,10 +1,9 @@
 import path from 'node:path';
 import { and, eq } from 'drizzle-orm';
-import { DATA_DIR } from '@/server/env';
 import { getDb } from '@/server/db/client';
 import { artifacts } from '@/server/db/schema';
 import { newId } from '@/server/ids';
-import { writeFile } from '@/server/security/workspace';
+import { putObject } from '@/server/storage';
 import type { Artifact } from '@/server/db/schema';
 
 export function artifactKind(name: string, mime: string): Artifact['kind'] {
@@ -29,9 +28,11 @@ export async function createArtifact(params: {
   threadId?: string | null;
   messageId?: string | null;
 }): Promise<Artifact> {
-  const relative = params.relativePath || params.name;
-  const written = await writeFile(params.orgId, params.scopeId, relative, params.content);
+  const relative = (params.relativePath || params.name).replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!relative || relative.split('/').includes('..')) throw new Error('非法交付物路径');
   const mime = params.mime || guessMime(params.name);
+  const key = `workspaces/${params.orgId}/${params.scopeId}/${relative}`;
+  const written = await putObject(key, params.content, mime);
   const db = await getDb();
   const row: typeof artifacts.$inferInsert = {
     id: newId('art'),
@@ -42,7 +43,7 @@ export async function createArtifact(params: {
     name: params.name,
     mime,
     size: written.size,
-    path: path.relative(DATA_DIR, written.fullPath).split(path.sep).join('/'),
+    path: written.ref,
     kind: artifactKind(params.name, mime),
   };
   await db.insert(artifacts).values(row);

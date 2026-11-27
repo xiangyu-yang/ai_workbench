@@ -1,6 +1,6 @@
 # Cuter 架构设计 · 集团级 AI 工作台
 
-> 版本 1.2 ｜ 状态：已落地 ｜ 对标：WorkBuddy（腾讯）、DeepSeek Harness、Dify、Coze Studio、n8n、LibreChat
+> 版本 1.3 ｜ 状态：已落地 ｜ 对标：WorkBuddy（腾讯）、DeepSeek Harness、Dify、Coze Studio、n8n、LibreChat
 
 ---
 
@@ -79,7 +79,7 @@
         ┌───────────────────────────┼────────────────────────────┐
         │                           │                            │
 ┌───────▼────────┐        ┌─────────▼─────────┐        ┌─────────▼─────────┐
-│ PostgreSQL /   │        │ Object Storage /  │        │ External World     │
+│ PostgreSQL /   │        │ S3/MinIO / Local   │        │ External World     │
 │ PGlite         │        │ Local FS          │        │ LLM APIs · MCP     │
 │ (OLTP + 审计)  │        │ (交付物/附件)     │        │ Servers · Web      │
 └────────────────┘        └───────────────────┘        └───────────────────┘
@@ -137,6 +137,7 @@ orgs ─┬─ memberships ── users ── sessions
 关键设计决策：
 
 - **消息用 parts 而非纯文本**：`parts: [{type:'text'|'reasoning'|'tool'|'artifact'|'citation'}]`，天然支持工具卡片、思考过程、交付物与引用回放。
+- **对象存储抽象**：`storage.ts` 统一 `putObject/getObject`；`S3_BUCKET` 存在时交付物与聊天附件走 S3/MinIO，否则回退 `DATA_DIR`；数据库只保存对象引用，不保存二进制。
 - **Run 与 Message 分离**：一次用户消息可能触发多次模型调用与审批恢复；Run 记录每次执行的成本、延迟与错误。
 - **会话运行态**：线程列表返回 `busyStatus`（streaming/awaiting_approval），侧栏与管理弹窗用青色/琥珀色标记；管理弹窗可强制结束当前运行，随后允许删除。
 - **会话管理**：`threads.archived` 控制归档；侧栏管理弹窗支持批量归档/恢复/删除，删除前检查运行/审批状态，操作写审计。
@@ -274,7 +275,7 @@ while (step < maxSteps) {
 | 审计 | 登录、成员、资产 CRUD、密钥、任务审批、危险工具调用全量事件 |
 | 提示注入 | 不可信内容包裹 + 指令隔离 + 输出转义（Markdown 默认不渲染 HTML） |
 | SSRF | 私网/保留段拦截、重定向逐跳校验、协议白名单 |
-| 文件 | 沙箱根目录、路径穿越校验、大小/类型限制、独立存储前缀 |
+| 文件 | 沙箱根目录、路径穿越校验、大小/类型限制、独立存储前缀；交付物/附件可切换 S3/MinIO |
 | 供应链 | 锁定版本、无原生编译依赖优先、镜像最小化 |
 
 ---
@@ -304,7 +305,7 @@ Prometheus + Grafana + Loki
 ```
 - 迁移在发布 Job 执行（`MIGRATE_ON_BOOT=false` + `npm run db:migrate`）。
 - 密钥走 KMS/Secrets Manager 注入，`APP_SECRET` 定期轮换。
-- 文件存储切换 S3 适配器（接口已隔离）。
+- 交付物与聊天附件可切换 S3/MinIO；Agent workspace 仍使用共享卷，后续可拆独立 workspace 服务。
 
 ### 10.3 演进路径（何时拆服务）
 | 信号 | 拆分 |

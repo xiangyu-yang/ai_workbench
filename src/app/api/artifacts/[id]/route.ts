@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DATA_DIR } from '@/server/env';
+import { getObject } from '@/server/storage';
 import { getArtifact } from '@/server/artifacts';
 import { ApiError, errorResponse, requireApi } from '@/server/http';
 
@@ -11,17 +12,22 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const artifact = await getArtifact(auth.org.id, id);
     if (!artifact) throw new ApiError(404, '交付物不存在');
 
-    const candidates = [
-      path.join(DATA_DIR, artifact.path),
-      path.join(DATA_DIR, 'workspaces', artifact.path),
-    ].filter((candidate) => candidate.startsWith(DATA_DIR));
     let buffer: Buffer | null = null;
-    for (const candidate of candidates) {
-      try {
-        buffer = await fs.readFile(candidate);
-        break;
-      } catch {
-        /* try next */
+    try {
+      buffer = await getObject(artifact.path);
+    } catch {
+      // 兼容 S3 迁移前写入的本地路径。
+      const candidates = [
+        path.join(DATA_DIR, artifact.path),
+        path.join(DATA_DIR, 'workspaces', artifact.path),
+      ].filter((candidate) => candidate.startsWith(DATA_DIR));
+      for (const candidate of candidates) {
+        try {
+          buffer = await fs.readFile(candidate);
+          break;
+        } catch {
+          /* try next */
+        }
       }
     }
     if (!buffer) throw new ApiError(404, '交付物文件已丢失');

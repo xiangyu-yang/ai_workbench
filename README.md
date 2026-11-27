@@ -156,9 +156,9 @@ APP_SECRET=$(openssl rand -hex 32) docker compose up -d --build
 
 ### 生产集群（PostgreSQL + Web + Worker）
 ```bash
-APP_SECRET=$(openssl rand -hex 32) docker compose -f deploy/docker-compose.prod.yml up -d --build
+APP_SECRET=$(openssl rand -hex 32) docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.s3.yml up -d --build
 ```
-包含一次性迁移 Job、Web 与独立 Worker，可水平扩展。K8s 参考清单见 `deploy/k8s.yaml`。
+包含一次性迁移 Job、Web 与独立 Worker，可水平扩展。S3 overlay 会额外启动 MinIO，并把交付物/聊天附件切换到 S3 兼容存储；K8s 参考清单见 `deploy/k8s.yaml`。使用外部 S3 时不要启动 MinIO，直接注入 `S3_*` 环境变量即可。
 
 ### 构建产物
 ```bash
@@ -174,7 +174,7 @@ node .next/standalone/server.js   # 需先复制 .next/static、drizzle 与 skil
 | --- | --- | --- |
 | `APP_SECRET` | 自动生成 | 会话与密钥加密根密钥；**生产必须显式配置** |
 | `DATABASE_URL` | 空 | 留空使用 PGlite；生产填 PostgreSQL |
-| `DATA_DIR` | `./.data` | PGlite、附件与交付物目录 |
+| `DATA_DIR` | `./.data` | PGlite、Agent workspace、知识库原始文件；本地对象存储回退目录 |
 | `APP_URL` | `http://localhost:3100` | 邀请链接与绝对地址 |
 | `DEMO_MODE` | `true` | 无供应商时启用演示模型 |
 | `OLLAMA_NUM_CTX` | `32768` | 本地 Ollama 上下文窗口；股票深研建议不低于 32k |
@@ -186,6 +186,12 @@ node .next/standalone/server.js   # 需先复制 .next/static、drizzle 与 skil
 | `TASK_CONCURRENCY` | `2` | 单进程任务并发 |
 | `MIGRATE_ON_BOOT` | `true` | 启动时自动迁移 |
 | `TAVILY_API_KEY` | 空 | 启用受控联网搜索；未配置时股票研究隐藏该工具 |
+| `S3_BUCKET` | 空 | 设置后启用 S3/MinIO 对象存储，用于交付物与聊天附件 |
+| `S3_REGION` | `us-east-1` | S3 区域 |
+| `S3_ENDPOINT` | 空 | MinIO/兼容 S3 的 endpoint，例如 `http://minio:9000` |
+| `S3_ACCESS_KEY_ID` | 空 | S3 access key；生产建议由 Secrets Manager 注入 |
+| `S3_SECRET_ACCESS_KEY` | 空 | S3 secret key；生产建议由 Secrets Manager 注入 |
+| `S3_FORCE_PATH_STYLE` | `true` | MinIO 需要 path-style；AWS S3 可设为 false |
 | `SKILLS_DIR` | `./skills` | 内置技能源目录；standalone/Docker 已显式复制 |
 | `TOOL_ALLOWED_HOSTS` | 空 | 工具出口域名白名单（允许内网时显式列出） |
 
@@ -266,7 +272,7 @@ npm run build       # 生产构建
 ## 已知边界（v1）
 
 - PGlite 仅支持单进程；多副本请使用 PostgreSQL。
-- 交付物存储适配本地卷；对象存储适配器在路线图中。
+- 交付物与聊天附件支持本地共享卷和 S3/MinIO；Agent workspace 仍需要共享卷（NFS/CephFS）或后续 workspace 对象存储适配。
 - 未内置 OIDC/SAML 与行级权限；私有化可先在网关层接入 SSO。
 - 向量检索为应用层混合检索，超大数据集建议迁移 pgvector（接口已隔离）。
 - 代码执行沙箱、DOCX/PPTX 原生导出在后续版本提供；Markdown 的 PDF 导出使用浏览器打印预览，需要允许弹出窗口并由用户选择“另存为 PDF”，服务端不生成 PDF 文件。

@@ -1,9 +1,7 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { getDb } from '@/server/db/client';
 import { attachments } from '@/server/db/schema';
-import { DATA_DIR } from '@/server/env';
 import { newId } from '@/server/ids';
+import { putObject } from '@/server/storage';
 import {
   ApiError,
   assertSameOrigin,
@@ -38,10 +36,12 @@ export async function POST(req: Request) {
 
     const id = newId('att');
     const name = safeName(file.name);
-    const rel = path.join('uploads', auth.org.id, 'chat', `${id}-${name}`);
-    const full = path.join(DATA_DIR, rel);
-    await fs.mkdir(path.dirname(full), { recursive: true });
-    await fs.writeFile(full, Buffer.from(await file.arrayBuffer()));
+    const key = `uploads/${auth.org.id}/chat/${id}-${name}`;
+    const stored = await putObject(
+      key,
+      Buffer.from(await file.arrayBuffer()),
+      file.type || 'application/octet-stream',
+    );
 
     const db = await getDb();
     await db.insert(attachments).values({
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       name,
       mime: file.type || 'application/octet-stream',
       size: file.size,
-      path: rel,
+      path: stored.ref,
       kind,
     });
 

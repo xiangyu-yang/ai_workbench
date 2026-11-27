@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
 import { env, VERSION } from '@/server/env';
+import { storageBackend } from '@/server/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ export async function GET() {
       status: 'ok',
       version: VERSION,
       database: env.DATABASE_URL ? 'postgres' : 'pglite',
+      storage: storageBackend(),
       demoMode: env.DEMO_MODE,
       latencyMs: Date.now() - started,
       uptimeSeconds: Math.round(process.uptime()),

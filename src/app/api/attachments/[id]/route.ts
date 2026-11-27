@@ -1,10 +1,8 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/server/db/client';
 import { attachments } from '@/server/db/schema';
-import { DATA_DIR } from '@/server/env';
 import { ApiError, errorResponse, requireApi } from '@/server/http';
+import { getObject } from '@/server/storage';
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -19,13 +17,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const attachment = rows[0];
     if (!attachment) throw new ApiError(404, '附件不存在');
 
-    const full = path.isAbsolute(attachment.path)
-      ? attachment.path
-      : path.join(DATA_DIR, attachment.path);
-    if (!full.startsWith(DATA_DIR)) throw new ApiError(400, '非法路径');
     let buffer: Buffer;
     try {
-      buffer = await fs.readFile(full);
+      buffer = await getObject(attachment.path);
     } catch {
       throw new ApiError(404, '附件文件已丢失');
     }
